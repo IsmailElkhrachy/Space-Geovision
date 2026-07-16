@@ -1,0 +1,114 @@
+# ============================================
+# Python
+# ============================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# ============================================
+# Virtual environments
+# ============================================
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ============================================
+# IDE files
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ============================================
+# Project specific - Large data files
+# ============================================
+*.tif
+*.tiff
+*.img
+*.hdf
+*.h5
+*.nc
+*.jp2
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.gpkg
+*.geojson
+*.kml
+*.kmz
+
+# ============================================
+# Output and temporary files
+# ============================================
+temp_*.tif
+temp_*.shp
+output/
+results/
+logs/
+*.log
+*.bak
+*.tmp
+
+# ============================================
+# Model weights (large files)
+# ============================================
+sam_vit_h_4b8939.pth
+sam_vit_l_0b3195.pth
+sam_vit_b_01ec64.pth
+*.pth
+*.pt
+*.onnx
+
+# ============================================
+# Whitebox Tools
+# ============================================
+whitebox_tools/
+WBT/
+wbt_*
+
+# ============================================
+# Jupyter notebooks
+# ============================================
+.ipynb_checkpoints/
+*.ipynb
+
+# ============================================
+# OS generated files
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.cab
+*.msi
+*.msm
+*.exe
+*.dll
+
+# ============================================
+# Sensitive files (if any)
+# ============================================
+*.pem
+*.key
+*.crt
+.env
+config.local.json
