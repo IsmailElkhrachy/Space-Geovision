@@ -94,8 +94,10 @@ class TestMercator(unittest.TestCase):
         from rasterio.transform import from_origin
         rgba = np.zeros((20, 30, 4), np.uint8); rgba[..., 0] = 200; rgba[..., 3] = 255
         out, (s, w_, n, e) = w.to_web_mercator(rgba, from_origin(44.0, 18.0, 1 / 30.0, 1 / 20.0), CRS.from_epsg(4326))
-        self.assertAlmostEqual(w_, 44.0, places=3); self.assertAlmostEqual(e, 45.0, places=3)
-        self.assertAlmostEqual(n, 18.0, places=3); self.assertAlmostEqual(s, 17.0, places=3)
+        # the output grid is snapped to whole Web-Mercator pixels, so each corner may move by up to one source pixel
+        tol = 1 / 20.0
+        self.assertAlmostEqual(w_, 44.0, delta=tol); self.assertAlmostEqual(e, 45.0, delta=tol)
+        self.assertAlmostEqual(n, 18.0, delta=tol); self.assertAlmostEqual(s, 17.0, delta=tol)
         self.assertEqual(out.shape[2], 4); self.assertGreater(out[..., 3].mean(), 200)
 
 
