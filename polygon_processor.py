@@ -1,4 +1,5 @@
 import os
+from resources import resource_path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -22,8 +23,6 @@ import tempfile
 import shutil
 
 import traceback
-
-
 
 
 class PolygonProcessor:
@@ -179,33 +178,6 @@ class PolygonProcessor:
         
         return True
     
-    def reload_layer(self, layer_name):
-        """Properly reload a vector layer with validation"""
-        if layer_name not in self.layers:
-            return False
-        
-        file_path = self.layers[layer_name]['file_name']
-        
-        try:
-            # Load with geometry validation
-            gdf = gpd.read_file(file_path)
-            gdf.geometry = gdf.geometry.make_valid()  # Fix invalid geometries
-            
-            # Preserve original CRS
-            if 'crs' in self.layers[layer_name]['gdf']:
-                gdf.crs = self.layers[layer_name]['gdf'].crs
-                
-            # Update storage
-            self.layers[layer_name]['gdf'] = gdf
-            self.polygon_processor.current_gdf = gdf
-            
-            # Refresh display
-            self.display_vector_layer(self.layers[layer_name], layer_name)
-            return True
-            
-        except Exception as e:
-            self.show_error(f"Reload failed: {str(e)}")
-            return False
 
     def _get_driver(self):
         ext = os.path.splitext(self.original_file_path)[1].lower()
@@ -214,14 +186,6 @@ class PolygonProcessor:
             '.geojson': 'GeoJSON',
             '.gpkg': 'GPKG'
         }.get(ext, 'ESRI Shapefile')
-
-    def _fix_shapefile_components(self, temp_path):
-        base = os.path.splitext(temp_path)[0]
-        for ext in ['.shx', '.dbf', '.prj', '.cpg']:
-            if os.path.exists(base + ext):
-                os.replace(base + ext, 
-                        os.path.splitext(self.original_file_path)[0] + ext)
-
 
 
     def save_as(self):
@@ -322,24 +286,6 @@ class PolygonProcessor:
         except Exception as e:
             QMessageBox.critical(self.ui, "Error", f"Save failed: {str(e)}")
     
-    def _save_layer_to_file(self, layer_name, file_path=None):
-        """Save layer to specified file or its original path"""
-        try:
-            gdf = self.ui.layers[layer_name]['gdf']
-            if file_path is None:
-                if 'path' not in self.ui.layers[layer_name]:
-                    return False
-                file_path = self.ui.layers[layer_name]['path']
-            
-            driver = self._get_driver(file_path)
-            if not driver:
-                return False
-                
-            gdf.to_file(file_path, driver=driver)
-            return True
-        except Exception as e:
-            logging.error(f"Error saving layer: {str(e)}")
-            return False
 
     def get_selected_vector_layer(self, prompt="Select a polygon layer"):
         """Get the currently selected vector layer from the UI"""
@@ -453,40 +399,40 @@ class PolygonProcessor:
             
     #         # Edit menu actions (if editable)
     #         if editable:
-    #             add_field_action = QAction(QIcon("D:\\Python_Codes\\icons\\add_column.png"), "Add Field", dialog)
+    #             add_field_action = QAction(QIcon(resource_path("add_column.png")), "Add Field", dialog)
     #             add_field_action.setShortcut("Ctrl+N")
     #             add_field_action.triggered.connect(lambda: self.add_attribute_field(layer_name))
     #             edit_menu.addAction(add_field_action)
                 
-    #             del_field_action = QAction(QIcon("D:\\Python_Codes\\icons\\column-delete.png"), "Delete Field", dialog)
+    #             del_field_action = QAction(QIcon(resource_path("column-delete.png")), "Delete Field", dialog)
     #             del_field_action.setShortcut("Ctrl+D")
     #             del_field_action.triggered.connect(lambda: self.delete_attribute_field(layer_name))
     #             edit_menu.addAction(del_field_action)
             
     #         # Tools menu actions
-    #         calc_action = QAction(QIcon("D:\\Python_Codes\\icons\\field_calculate.png"), "Field Calculator", dialog)
+    #         calc_action = QAction(QIcon(resource_path("field_calculate.png")), "Field Calculator", dialog)
     #         calc_action.setShortcut("Ctrl+F")
     #         calc_action.triggered.connect(lambda: self._show_enhanced_calculator(gdf, layer_name))
     #         tools_menu.addAction(calc_action)
             
-    #         stats_action = QAction(QIcon("D:\\Python_Codes\\icons\\Field_Statistics.png"), "Field Statistics", dialog)
+    #         stats_action = QAction(QIcon(resource_path("Field_Statistics.png")), "Field Statistics", dialog)
     #         stats_action.triggered.connect(lambda: self.show_field_statistics(layer_name))
     #         tools_menu.addAction(stats_action)
             
-    #         graph_action = QAction(QIcon("D:\\Python_Codes\\icons\\create_graph.png"), "Create Graph", dialog)
+    #         graph_action = QAction(QIcon(resource_path("create_graph.png")), "Create Graph", dialog)
     #         graph_action.triggered.connect(lambda: self.create_graph(layer_name))
     #         tools_menu.addAction(graph_action)
             
     #         # Sort menu actions
-    #         sort_asc_action = QAction(QIcon("D:\\Python_Codes\\icons\\Sort_ascending.png"), "Sort Ascending", dialog)
+    #         sort_asc_action = QAction(QIcon(resource_path("Sort_ascending.png")), "Sort Ascending", dialog)
     #         sort_asc_action.triggered.connect(lambda: self._sort_table(True))
     #         sort_menu.addAction(sort_asc_action)
             
-    #         sort_desc_action = QAction(QIcon("D:\\Python_Codes\\icons\\Sort_dscending.png"), "Sort Descending", dialog)
+    #         sort_desc_action = QAction(QIcon(resource_path("Sort_dscending.png")), "Sort Descending", dialog)
     #         sort_desc_action.triggered.connect(lambda: self._sort_table(False))
     #         sort_menu.addAction(sort_desc_action)
             
-    #         advanced_sort_action = QAction(QIcon("D:\\Python_Codes\\icons\\Advanced_Sort.png"), "Advanced Sort...", dialog)
+    #         advanced_sort_action = QAction(QIcon(resource_path("Advanced_Sort.png")), "Advanced Sort...", dialog)
     #         advanced_sort_action.triggered.connect(lambda: self._show_advanced_sort(gdf, layer_name))
     #         sort_menu.addAction(advanced_sort_action)
             
@@ -556,46 +502,46 @@ class PolygonProcessor:
             # Edit menu actions (if editable)
             if editable:
                 # Row operations
-                delete_action = QAction(QIcon("D:\\Python_Codes\\icons\\Delete_Selected_Rows.png"), "Delete Selected Rows", dialog)
+                delete_action = QAction(QIcon(resource_path("Delete_Selected_Rows.png")), "Delete Selected Rows", dialog)
                 delete_action.setShortcut("Del")
                 delete_action.triggered.connect(lambda: self._delete_selected_rows(gdf, layer_name))
                 edit_menu.addAction(delete_action)
                 
                 # Field operations
-                add_field_action = QAction(QIcon("D:\\Python_Codes\\icons\\add_column.png"), "Add Field", dialog)
+                add_field_action = QAction(QIcon(resource_path("add_column.png")), "Add Field", dialog)
                 add_field_action.setShortcut("Ctrl+N")
                 add_field_action.triggered.connect(lambda: self.add_attribute_field(layer_name))
                 edit_menu.addAction(add_field_action)
                 
-                del_field_action = QAction(QIcon("D:\\Python_Codes\\icons\\column-delete.png"), "Delete Field", dialog)
+                del_field_action = QAction(QIcon(resource_path("column-delete.png")), "Delete Field", dialog)
                 del_field_action.setShortcut("Ctrl+D")
                 del_field_action.triggered.connect(lambda: self.delete_attribute_field(layer_name))
                 edit_menu.addAction(del_field_action)
             
             # Tools menu actions
-            calc_action = QAction(QIcon("D:\\Python_Codes\\icons\\field_calculate.png"), "Field Calculator", dialog)
+            calc_action = QAction(QIcon(resource_path("field_calculate.png")), "Field Calculator", dialog)
             calc_action.setShortcut("Ctrl+F")
             calc_action.triggered.connect(lambda: self._show_enhanced_calculator(gdf, layer_name))
             tools_menu.addAction(calc_action)
             
-            stats_action = QAction(QIcon("D:\\Python_Codes\\icons\\Field_Statistics.png"), "Field Statistics", dialog)
+            stats_action = QAction(QIcon(resource_path("Field_Statistics.png")), "Field Statistics", dialog)
             stats_action.triggered.connect(lambda: self.show_field_statistics(layer_name))
             tools_menu.addAction(stats_action)
             
-            graph_action = QAction(QIcon("D:\\Python_Codes\\icons\\create_graph.png"), "Create Graph", dialog)
+            graph_action = QAction(QIcon(resource_path("create_graph.png")), "Create Graph", dialog)
             graph_action.triggered.connect(lambda: self.create_graph(layer_name))
             tools_menu.addAction(graph_action)
             
             # Sort menu actions
-            sort_asc_action = QAction(QIcon("D:\\Python_Codes\\icons\\Sort_ascending.png"), "Sort Ascending", dialog)
+            sort_asc_action = QAction(QIcon(resource_path("Sort_ascending.png")), "Sort Ascending", dialog)
             sort_asc_action.triggered.connect(lambda: self._sort_table(True))
             sort_menu.addAction(sort_asc_action)
             
-            sort_desc_action = QAction(QIcon("D:\\Python_Codes\\icons\\Sort_dscending.png"), "Sort Descending", dialog)
+            sort_desc_action = QAction(QIcon(resource_path("Sort_dscending.png")), "Sort Descending", dialog)
             sort_desc_action.triggered.connect(lambda: self._sort_table(False))
             sort_menu.addAction(sort_desc_action)
             
-            advanced_sort_action = QAction(QIcon("D:\\Python_Codes\\icons\\Advanced_Sort.png"), "Advanced Sort...", dialog)
+            advanced_sort_action = QAction(QIcon(resource_path("Advanced_Sort.png")), "Advanced Sort...", dialog)
             advanced_sort_action.triggered.connect(lambda: self._show_advanced_sort(gdf, layer_name))
             sort_menu.addAction(advanced_sort_action)
             
@@ -1176,69 +1122,6 @@ class PolygonProcessor:
         except Exception as e:
             QMessageBox.critical(self.ui, "Error", f"Failed to delete field: {str(e)}")
 
-    def calculate_field(self, layer_name=None):
-        """Calculate field values using expression"""
-        try:
-            # Import required modules if not already imported
-            from PyQt5.QtWidgets import QApplication
-            
-            layer_name = layer_name or self.get_selected_vector_layer()
-            if not layer_name:
-                return
-                
-            gdf = self.ui.layers[layer_name]['gdf']
-            fields = [col for col in gdf.columns if col != 'geometry']
-            
-            # Create dialog
-            dialog = QDialog(self.ui)
-            dialog.setWindowTitle("Field Calculator")
-            layout = QVBoxLayout(dialog)
-            
-            # Field selection
-            field_combo = QComboBox()
-            field_combo.addItems(fields)
-            
-            # Expression input
-            expr_edit = QLineEdit()
-            expr_edit.setPlaceholderText("e.g., 'area*10000' or 'population/area'")
-            
-            # Buttons
-            btn_box = QDialogButtonBox()
-            btn_box.addButton("Calculate", QDialogButtonBox.AcceptRole)
-            btn_box.addButton("Cancel", QDialogButtonBox.RejectRole)
-            btn_box.accepted.connect(dialog.accept)
-            btn_box.rejected.connect(dialog.reject)
-            
-            # Layout
-            layout.addWidget(QLabel("Target Field:"))
-            layout.addWidget(field_combo)
-            layout.addWidget(QLabel("Expression:"))
-            layout.addWidget(expr_edit)
-            layout.addWidget(btn_box)
-            
-            if dialog.exec_():
-                try:
-                    field = field_combo.currentText()
-                    expr = expr_edit.text()
-                    
-                    # Calculate the field
-                    gdf[field] = gdf.eval(expr)
-                    self.ui.layers[layer_name]['gdf'] = gdf
-                    
-                    # Force UI update
-                    QApplication.processEvents()
-                    
-                    # If attribute table is open, refresh it
-                    if hasattr(self, 'attribute_table') and hasattr(self.attribute_table, 'refresh_view'):
-                        self.attribute_table.refresh_view()
-                    
-                    QMessageBox.information(self.ui, "Success", "Field calculated successfully!")
-                    
-                except Exception as e:
-                    QMessageBox.critical(self.ui, "Error", f"Calculation failed: {str(e)}")
-                    
-        except Exception as e:
-            QMessageBox.critical(self.ui, "Error", f"Failed to calculate field: {str(e)}")
 
     # Statistics & Export
     def show_field_statistics(self, layer_name=None):
@@ -1260,7 +1143,7 @@ class PolygonProcessor:
                     converted = pd.to_numeric(gdf[col], errors='raise')
                     gdf[col] = converted  # Update the column in the DataFrame
                     numeric_cols.append(col)
-                except:
+                except Exception:
                     continue
             
             if not numeric_cols:
@@ -1379,53 +1262,6 @@ class PolygonProcessor:
         if hasattr(self.ui, 'actionStop_Editing'):
             self.ui.actionStop_Editing.triggered.connect(lambda: self.stop_editing(True))
 
-    def _show_layer_context_menu(self, position):
-        """Show context menu for layer list with graph option"""
-        if not self.ui.layer_list.selectedItems():
-            return
-            
-        menu = QMenu()
-        show_attr_action = menu.addAction("Show Attribute Table")
-        graph_action = menu.addAction("Create Graph")
-        export_action = menu.addAction("Export to Shapefile")
-        
-        action = menu.exec_(self.ui.layer_list.viewport().mapToGlobal(position))
-        layer_name = self.ui.layer_list.selectedItems()[0].text()
-        
-        if action == show_attr_action:
-            self.show_attribute_table(layer_name)
-        elif action == graph_action:
-            self.create_graph(layer_name)
-        elif action == export_action:
-            self.export_to_shapefile(layer_name)
-
-    def export_to_shapefile(self, layer_name=None):
-        """Export layer to shapefile"""
-        try:
-            layer_name = layer_name or self.get_selected_vector_layer()
-            if not layer_name:
-                return
-                
-            gdf = self.ui.layers[layer_name]['gdf']
-            file_path, _ = QFileDialog.getSaveFileName(
-                self.ui, "Save Shapefile", 
-                f"{layer_name}.shp", 
-                "Shapefiles (*.shp)")
-                
-            if file_path:
-                gdf.to_file(file_path, driver='ESRI Shapefile')
-                if gdf.crs:
-                    from pyproj import CRS
-                    crs = CRS(gdf.crs)
-                    with open(file_path.replace('.shp', '.prj'), 'w') as f:
-                        f.write(crs.to_wkt())
-                
-                # Update the stored path so future saves go here
-                self.ui.layers[layer_name]['path'] = file_path
-                QMessageBox.information(self.ui, "Success", f"Exported to:\n{file_path}")
-            
-        except Exception as e:
-            QMessageBox.critical(self.ui, "Error", f"Export failed: {str(e)}")
 
     def clip_polygons(self):
         """Clip polygons using another polygon layer"""
@@ -1828,7 +1664,7 @@ class PolygonProcessor:
                         new_row.geometry = part
                         new_features.append(new_row)
                 except Exception as e:
-                    print(f"Could not split feature {idx}: {str(e)}")
+                    logging.info(f"Could not split feature {idx}: {str(e)}")
                     continue
                     
             if new_features:
@@ -1861,38 +1697,6 @@ class PolygonProcessor:
                 
         except Exception as e:
             QMessageBox.critical(self.ui, "Error", f"Split operation failed: {str(e)}")
-    
-    def reshape_polygons(self):
-        """Activate polygon reshaping mode"""
-        try:
-            if not hasattr(self.parent, 'show_selection_instructions'):
-                raise AttributeError("Parent app is missing required selection methods")
-                
-            self.parent.show_selection_instructions()
-            self.parent.selection_mode = 'reshape'
-            self.parent.canvas.setCursor(Qt.CrossCursor)
-            
-            # Clear previous selection points
-            if hasattr(self.parent, 'selection_points'):
-                self.parent.selection_points = []
-                
-        except Exception as e:
-            QMessageBox.critical(self.parent, "Error", f"Failed to activate reshape mode: {str(e)}")
-            logging.error(f"Error in reshape_polygons: {str(e)}")
-
-    def _perform_reshape(self, new_geometry):
-        """Apply the reshape to selected features"""
-        layer_name = self.get_selected_vector_layer()
-        if not layer_name:
-            return
-            
-        gdf = self.ui.layers[layer_name]['gdf']
-        for idx in self.selected_features:
-            if idx in gdf.index:
-                gdf.at[idx, 'geometry'] = new_geometry
-                
-        self.ui.update_map_display()
-        QMessageBox.information(self.ui, "Success", "Polygons reshaped successfully")
     
     def delete_polygon_parts(self):
         """Delete holes/interior rings from selected polygons"""
@@ -1953,28 +1757,6 @@ class PolygonProcessor:
         except Exception as e:
             QMessageBox.critical(self.ui, "Error", f"Delete parts failed: {str(e)}")
  
-    def _show_selection_instructions(self, operation):
-        """Show detailed selection instructions"""
-        msg = QMessageBox(self.ui)
-        msg.setIcon(QMessageBox.Information)
-        msg.setWindowTitle(f"Select Polygons to {operation.title()}")
-        msg.setText(f"Please select polygons to {operation} first")
-        
-        text = QTextEdit()
-        text.setHtml(f"""
-        <h3>How to select polygons:</h3>
-        <ol>
-            <li>Click the <b>Rectangle Select</b> or <b>Polygon Select</b> tool</li>
-            <li>Draw a selection area on the map</li>
-            <li>Selected polygons will highlight in <span style='color:yellow'>yellow</span></li>
-            <li>Then click the '{operation.title()}' button again</li>
-        </ol>
-        """)
-        text.setReadOnly(True)
-        
-        layout = msg.layout()
-        layout.addWidget(text, 1, 0, 1, layout.columnCount())
-        msg.exec_()
 
     def add_geometry_fields(self, layer_name=None):
         """إضافة حقول المساحة والمحيط والخصائص الهندسية"""
@@ -2119,97 +1901,9 @@ class PolygonProcessor:
         gdf = self.ui.layers[layer_name]['gdf']
         return gdf[gdf.index.isin(self.selected_features)]
     
-    def update_map_display(self):
-        """Show selected features with highlights"""
-        try:
-            # Clear and redraw base layers
-            self.ax.clear()
-            
-            # Draw unselected features
-            layer_name = self.polygon_processor.get_selected_vector_layer()
-            if layer_name and layer_name in self.layers:
-                gdf = self.layers[layer_name]['gdf']
-                
-                if hasattr(self.polygon_processor, 'selected_features'):
-                    unselected = gdf[~gdf.index.isin(self.polygon_processor.selected_features)]
-                    unselected.plot(ax=self.ax, color='blue', alpha=0.5)
-                    
-                    # Draw selected features highlighted
-                    selected = gdf[gdf.index.isin(self.polygon_processor.selected_features)]
-                    if not selected.empty:
-                        selected.plot(ax=self.ax, color='yellow', edgecolor='red', linewidth=2)
-            
-            # Draw temporary selection shapes
-            if hasattr(self, 'temp_rect'):
-                rect = self.temp_rect
-                self.ax.plot(
-                    [rect.left(), rect.right(), rect.right(), rect.left(), rect.left()],
-                    [rect.top(), rect.top(), rect.bottom(), rect.bottom(), rect.top()],
-                    'g--'
-                )
-                
-            if hasattr(self, 'selection_points') and self.selection_points:
-                xs, ys = zip(*self.selection_points)
-                self.ax.plot(xs, ys, 'go-')
-                
-            self.canvas.draw()
-            
-        except Exception as e:
-            print(f"Display error: {str(e)}")
 
-    def mousePressEvent(self, event):
-        """Handle mouse events for selection"""
-        if self.selection_mode == 'rectangle' and event.button() == Qt.LeftButton:
-            self.selection_start = self.canvas.mapToScene(event.pos())
-            self.temp_shape = None
-        
-        elif self.selection_mode == 'polygon' and event.button() == Qt.LeftButton:
-            if not hasattr(self, 'selection_points'):
-                self.selection_points = []
-            point = self.canvas.mapToScene(event.pos())
-            self.selection_points.append((point.x(), point.y()))
-            
-            if len(self.selection_points) > 1:
-                self.temp_shape = LineString(self.selection_points)
-            self.update_map_display()
-        
-        elif event.button() == Qt.RightButton and self.selection_mode:
-            if self.selection_mode == 'rectangle':
-                self.finish_rectangle_selection()
-            elif self.selection_mode == 'polygon':
-                self.finish_polygon_selection()
 
-    def finish_rectangle_selection(self):
-        """Finalize rectangle selection"""
-        end_point = self.canvas.mapToScene(self.mapFromGlobal(QCursor.pos()))
-        rect = QRectF(self.selection_start, end_point).normalized()
-        
-        # Find features within rectangle
-        layer_name = self.polygon_processor.get_selected_vector_layer()
-        if layer_name:
-            gdf = self.layers[layer_name]['gdf']
-            selected = gdf[gdf.geometry.intersects(self.map_to_geo(rect))]
-            self.polygon_processor.set_selected_features(selected.index.tolist())
-        
-        self.selection_mode = None
-        self.update_map_display()
 
-    def finish_polygon_selection(self):
-        """Finalize polygon selection"""
-        if hasattr(self, 'selection_points') and len(self.selection_points) >= 3:
-            poly = Polygon(self.selection_points)
-            
-            # Find features within polygon
-            layer_name = self.polygon_processor.get_selected_vector_layer()
-            if layer_name:
-                gdf = self.layers[layer_name]['gdf']
-                selected = gdf[gdf.geometry.intersects(poly)]
-                self.polygon_processor.set_selected_features(selected.index.tolist())
-        
-        self.selection_mode = None
-        if hasattr(self, 'selection_points'):
-            del self.selection_points
-        self.update_map_display()
 
     def create_graph(self, layer_name=None):
         """Create an advanced graph without save/close buttons"""
@@ -2439,8 +2133,7 @@ class PolygonProcessor:
             # Rest of your field change logic
             self._plot_graph(dialog)
         except Exception as e:
-            print(f"Error handling Y field change: {str(e)}")
-
+            logging.info(f"Error handling Y field change: {str(e)}")
     def _remove_y_field(self, y_row, y_combo, color_combo, dialog):
         """Remove Y field with captured parameters"""
         try:
@@ -2458,10 +2151,7 @@ class PolygonProcessor:
             
             self._plot_graph(dialog)
         except Exception as e:
-            print(f"Error removing Y field: {str(e)}")
-
-    
-
+            logging.info(f"Error removing Y field: {str(e)}")
     def _plot_graph(self, dialog):
         """Handle the actual graph plotting"""
         try:
@@ -2510,7 +2200,6 @@ class PolygonProcessor:
                 color=self.y_color_combos[0].currentText() if self.y_color_combos else '#1f77b4')
         ax.set_xlabel(self.x_combo.currentText())
         ax.set_ylabel("Frequency")
-
 
 
     def _plot_xy_graph(self, ax, x_field, x_data, graph_type, rotation, ha):
@@ -2617,7 +2306,7 @@ class PolygonProcessor:
                 except Exception as e:
                     error_msg = f"Error plotting '{y_field if y_field else 'unknown'}': {str(e)}"
                     error_messages.append(error_msg)
-                    print(f"[Error] {error_msg}")
+                    logging.info(f"[Error] {error_msg}")
                     traceback.print_exc()
 
             # Error handling and feedback
@@ -2654,7 +2343,7 @@ class PolygonProcessor:
 
         except Exception as main_error:
             error_msg = f"Critical plotting error: {str(main_error)}"
-            print(f"[Critical] {error_msg}")
+            logging.info(f"[Critical] {error_msg}")
             traceback.print_exc()
             ax.text(0.5, 0.5, "Critical plotting error", ha='center', va='center',
                 color='red', fontsize=12, 
@@ -2663,47 +2352,7 @@ class PolygonProcessor:
         finally:
             ax.figure.canvas.draw_idle()
 
-    def _save_graph(self, dialog):
-        """Handle graph saving with high quality output"""
-        path, _ = QFileDialog.getSaveFileName(
-            dialog, "Save Graph", 
-            f"{self.current_layer_name}_graph", 
-            "PNG (*.png);;JPEG (*.jpg);;PDF (*.pdf);;SVG (*.svg);;TIFF (*.tiff)")
-        
-        if path:
-            try:
-                self.fig.savefig(path, dpi=300, bbox_inches='tight', facecolor='white')
-                QMessageBox.information(dialog, "Success", f"Graph saved to:\n{path}")
-            except Exception as e:
-                QMessageBox.critical(dialog, "Error", f"Failed to save graph:\n{str(e)}")
 
-    def toggle_edit_buttons(self, enable):
-            self.actionSave_Edits.setEnabled(enable)
-            self.actionStop_Editing.setEnabled(enable)
-            print(f"تم تغيير حالة الأزرار إلى: {enable}")  # للتتبع
 
     # Add to PolygonProcessor class
-    def add_feature(self, geometry):
-        """Add new feature to edit buffer"""
-        # Get next FID
-        next_fid = self.edit_buffer['FID'].max() + 1 if not self.edit_buffer.empty else 0
-        
-        new_row = {'FID': next_fid, 'geometry': geometry}
-        if not self.editing_active:
-            return False
-            
-        new_row = {'geometry': geometry}
-        # Add attributes from existing columns
-        for col in self.edit_buffer.columns:
-            if col != 'geometry':
-                new_row[col] = None  # Or appropriate default
-                
-        self.edit_buffer = self.edit_buffer.append(new_row, ignore_index=True)
-        return True
 
-    def delete_feature(self, index):
-        """Delete feature by index"""
-        if self.editing_active and 0 <= index < len(self.edit_buffer):
-            self.edit_buffer = self.edit_buffer.drop(index).reset_index(drop=True)
-            return True
-        return False

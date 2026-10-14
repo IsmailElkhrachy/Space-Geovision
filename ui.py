@@ -5,83 +5,68 @@ import traceback
 import logging
 import json
 import time
-import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import rasterio
-from rasterio.warp import transform
 from rasterio.features import shapes
 from rasterio.transform import from_origin
 import geopandas as gpd
 from shapely.geometry import shape
+from shapely.ops import unary_union
 import tempfile
 from PIL import Image
-from skimage import img_as_float, measure, exposure, transform
+from skimage import img_as_float, measure, exposure
 from skimage.feature import canny
 from sklearn.cluster import MeanShift, KMeans
-import folium
-import leafmap
-import matplotlib.patches as mpatches  # <-- Add this import
+import matplotlib
+import matplotlib.colors as mcolors
+import matplotlib.patches as mpatches
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5 import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.patches import Polygon as MplPolygon
 from matplotlib.collections import PatchCollection
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from PyQt5.QtWidgets import (QGraphicsEllipseItem,QGraphicsPolygonItem, QGraphicsRectItem,
-    QMainWindow, QAction, QFileDialog, QMessageBox, QVBoxLayout, QLabel, QFrame, QWidget, QRadioButton,
-    QInputDialog, QProgressBar, QSizePolicy, QHBoxLayout, QListWidget, QListWidgetItem, QButtonGroup,QTabWidget,
-    QPushButton, QColorDialog, QFontDialog, QProgressDialog, QTextEdit, QDialog, QApplication,QToolButton,
-    QSplitter, QMenuBar, QToolBar, QMenu, QDoubleSpinBox, QDialogButtonBox, QStackedWidget, QHBoxLayout, 
-    QComboBox, QLineEdit, QCheckBox, QSpinBox, QSlider, QGroupBox, QFormLayout, QScrollArea, QTableWidget, QTableWidgetItem
-)
+from PyQt5.QtWidgets import QGraphicsEllipseItem, QGraphicsPolygonItem, QGraphicsRectItem, QMainWindow, QAction, QFileDialog, QMessageBox, QVBoxLayout, QLabel, QFrame, QWidget, QRadioButton, QInputDialog, QProgressBar, QSizePolicy, QHBoxLayout, QListWidget, QListWidgetItem, QButtonGroup, QTabWidget, QPushButton, QColorDialog, QFontDialog, QProgressDialog, QTextEdit, QDialog, QApplication, QToolButton, QSplitter, QMenuBar, QToolBar, QMenu, QDoubleSpinBox, QDialogButtonBox, QStackedWidget, QComboBox, QLineEdit, QCheckBox, QSpinBox, QSlider, QGroupBox, QFormLayout, QScrollArea, QTableWidget, QTableWidgetItem
 from PyQt5.QtPrintSupport import QPrinter, QPrintPreviewDialog
-from PyQt5.QtPrintSupport import QPrinter
-from PyQt5.QtCore import Qt,QRectF,QRect,QDate ,QThread, pyqtSignal,QDateTime ,QMutex, QMutexLocker, QMetaObject, QSize, QSettings, QTimer, QPointF, QRectF, QStandardPaths
-from PyQt5.QtGui import QColor, QFont, QPixmap, QImage, QIcon, QPainter,QDoubleValidator,QPainter, QPen, QColor, QPolygonF, QBrush
-from PyQt5.QtPrintSupport import QPrinter, QPrintDialog, QPageSetupDialog
-from PyQt5.QtWebEngineWidgets import QWebEngineView
+from PyQt5.QtCore import Qt, QRectF, QRect, QDate, QThread, pyqtSignal, QDateTime, QMutex, QMutexLocker, QMetaObject, QSize, QSettings, QTimer, QPointF, QStandardPaths
+from PyQt5.QtGui import QColor, QFont, QPixmap, QImage, QIcon, QPainter, QDoubleValidator, QPen, QPolygonF, QBrush
+from PyQt5.QtPrintSupport import QPrintDialog, QPageSetupDialog, QPrinterInfo
 from helpers import ImageProcessor, ImageClassifier, RasterHelper
-from segment_anything import sam_model_registry, SamPredictor
-import torch
-from sympy import sympify, Mul, Pow, Add
-import folium
-from rasterio.features import shapes
-import geopandas as gpd
-from shapely.geometry import shape
-import tempfile
-from folium import Map
-from rasterio.transform import from_origin
-import re, ast
-import contextily as ctx
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+import sar_snap
+import water_mapping
+import flood
+import validation
+import supervised
+import change_detection
+import resources
+import georef
+from collections.abc import Mapping
+import terrain
+import basins
+import webmap
+import raster_expr
+from resources import resource_path
+try:
+    import torch
+    from segment_anything import sam_model_registry, SamPredictor, SamAutomaticMaskGenerator
+    SAM_AVAILABLE = True
+except ImportError:  # SAM is optional: `pip install torch segment-anything`
+    torch = sam_model_registry = SamPredictor = SamAutomaticMaskGenerator = None
+    SAM_AVAILABLE = False
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 from matplotlib.collections import QuadMesh, PathCollection
 from matplotlib.lines import Line2D
-from matplotlib.patches import Polygon
 from rasterio import features  # Add this import
 import colorsys
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 import pyproj
-import whitebox
-from whitebox import WhiteboxTools
 import shutil
 from datetime import datetime
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
 from polygon_processor import PolygonProcessor
 from shapely.geometry import Polygon, MultiPolygon, LineString
-from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.pyplot import Figure
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.figure import Figure
 from matplotlib.colors import Normalize, ListedColormap
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, 
-                            QSplitter, QListWidget)
 import math
 
 from matplotlib import colors
@@ -89,23 +74,61 @@ import sys
 
 # Add to your PyQt5 imports at the top of the file
 from PyQt5.QtWidgets import QGraphicsScene, QGraphicsView
-from PyQt5.QtGui import QImage, QPixmap, QPainter
-from PyQt5.QtCore import Qt
 from scipy.ndimage import uniform_filter
 from copy import copy
 from skimage import filters
 from scipy.stats import gaussian_kde
 from scipy.signal import find_peaks
 import psutil
-from datetime import datetime
 from skimage.morphology import binary_closing, remove_small_objects
-import folium
 from PyQt5.QtCore import QUrl
+from PyQt5.QtGui import QDesktopServices
+
+
+# ---- optional extras: the core application starts without them --------------------------------
+def _optional(name):
+    try:
+        return __import__(name)
+    except ImportError:
+        logging.warning("Optional package '%s' is not installed; the related feature is disabled.", name)
+        return None
+
+
+folium = _optional("folium")
+leafmap = _optional("leafmap")
+whitebox = _optional("whitebox")
+ctx = _optional("contextily")
+WhiteboxTools = getattr(whitebox, "WhiteboxTools", None)
+Map = getattr(folium, "Map", None)
+try:
+    from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings, QWebEnginePage
+
+    class _LoggingWebPage(QWebEnginePage):
+        """Sends JavaScript console messages of the web map to the application log (otherwise they are lost)."""
+        def javaScriptConsoleMessage(self, level, message, line, source):
+            logging.warning("web map JS %s:%s: %s", source, line, message)
+except ImportError:
+    QWebEngineView = None
+    QWebEngineSettings = None
+    _LoggingWebPage = None
 
 # Logging Configuration
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+def _get_cmap(cmap, lut=None):
+    """Colormap by name or instance. ``plt.cm.get_cmap`` was removed in Matplotlib 3.9."""
+    if not isinstance(cmap, mcolors.Colormap):
+        cmap = matplotlib.colormaps[cmap]
+    return cmap.resampled(lut) if lut else cmap
+
 
 class Worker(QThread):
+    """Runs ``operation(image, *args)`` off the GUI thread.
+
+    A failed operation is reported once through ``error`` (no silent retries) and ``stop()`` is cooperative:
+    it never terminates the thread, because killing a thread inside GDAL/numpy can corrupt the process.
+    """
     finished = pyqtSignal(object)
     progress = pyqtSignal(int)
     status = pyqtSignal(str)
@@ -120,40 +143,76 @@ class Worker(QThread):
         self._lock = QMutex()
 
     def run(self):
-        attempts = 3
-        for attempt in range(attempts):
-            try:
-                self.status.emit("Starting operation...")
-                self.progress.emit(-1)
-                result = self.operation(self.image, *self.args)
-                if self._is_running:
-                    self.finished.emit(result)
-                    self.progress.emit(100)
-                    self.status.emit("Operation completed successfully.")
-                    break
-            except Exception as e:
-                if attempt == attempts - 1:
-                    self.progress.emit(-2)
-                    error_msg = f"Error: {str(e)}"
-                    self.status.emit(error_msg)
-                    self.error.emit(error_msg)
-                    logging.error(f"Error in worker thread: {str(e)}")
-                else:
-                    self.status.emit(f"Retrying... ({attempt + 1}/{attempts})")
-            finally:
-                self.progress.emit(0)
-                self.status.emit("Operation finished.")
+        try:
+            self.status.emit("Starting operation...")
+            self.progress.emit(-1)
+            result = self.operation(self.image, *self.args)
+            with QMutexLocker(self._lock):
+                running = self._is_running
+            if running:
+                self.progress.emit(100)
+                self.status.emit("Operation completed successfully.")
+                self.finished.emit(result)
+        except Exception as exc:
+            logging.exception("Image operation failed")
+            self.progress.emit(-2)
+            self.status.emit(f"Error: {exc}")
+            self.error.emit(f"Error: {exc}")
 
     def stop(self):
         with QMutexLocker(self._lock):
             self._is_running = False
-        self.terminate()
-
-    def stop(self):
-        with QMutexLocker(self._mutex):
-            self._is_running = False
         self.quit()
-        self.wait(500)  # Wait up to 500ms for clean exit
+        self.wait(500)
+
+
+
+class SnapWorker(QThread):
+    """Runs the SNAP gpt chain off the GUI thread. No retries: a failed SNAP job is reported once."""
+    progress = pyqtSignal(int, str)
+    done = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, product, out_dir, params, gpt, heap_gb):
+        super().__init__()
+        self._args = (product, out_dir, params, gpt, heap_gb)
+        self._cancel = False
+
+    def cancel(self):
+        self._cancel = True
+
+    def run(self):
+        product, out_dir, params, gpt, heap_gb = self._args
+        try:
+            result = sar_snap.run_full_chain(
+                product, out_dir, params, gpt=gpt, java_heap_gb=heap_gb,
+                progress=lambda v, m: self.progress.emit(int(v), m),
+                cancelled=lambda: self._cancel)
+            data, profile = sar_snap.read_geotiff(result.geotiff)
+            self.done.emit((result, data, profile))
+        except sar_snap.Cancelled:
+            self.failed.emit('__cancelled__')
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
+class FuncWorker(QThread):
+    """Runs fn(progress) off the GUI thread. fn gets a progress(percent, message) callback."""
+    progress = pyqtSignal(int, str)
+    done = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, fn):
+        super().__init__()
+        self._fn = fn
+
+    def run(self):
+        try:
+            self.done.emit(self._fn(lambda v, m: self.progress.emit(int(v), str(m))))
+        except Exception as exc:
+            logging.exception("Background job failed")
+            self.failed.emit(str(exc))
+
 
 class SatelliteImageApp(QMainWindow):
     def __init__(self):
@@ -205,10 +264,7 @@ class SatelliteImageApp(QMainWindow):
         self.workflow_actions = []  # Will be populated with menu actions
         
         self.current_step = 0
-        self.workflow_steps = [
-            'load', 'filter', 'convert_db', 
-            'analyze', 'classify'
-        ]
+        self.workflow_steps = ['load', 'snap', 'analyze', 'classify']
 
         self.initUI()   
         self.color_ramps = {
@@ -249,6 +305,15 @@ class SatelliteImageApp(QMainWindow):
         #prepare_map_menu = menubar.addMenu('Map Setup')
         indices_menu = menubar.addMenu('Spectral Indices')
         change_detection_menu = menubar.addMenu('Change Detection Tools')
+        validation_menu = menubar.addMenu('Validation')
+        val_points_action = validation_menu.addAction('1. Create Sampling Points (blind labelling)...')
+        val_points_action.triggered.connect(self.validation_sample_points)
+        val_label_action = validation_menu.addAction('1b. Label Points in the App (blind)...')
+        val_label_action.triggered.connect(self.validation_label_points)
+        val_shuffle_action = validation_menu.addAction('1c. Shuffle Existing Points (hide class order, new blind copy)...')
+        val_shuffle_action.triggered.connect(self.validation_shuffle_points)
+        val_acc_action = validation_menu.addAction('2. Compute Accuracy from Labelled Points...')
+        val_acc_action.triggered.connect(self.validation_accuracy)
         help_menu = menubar.addMenu('Help')         
         
         
@@ -376,7 +441,19 @@ class SatelliteImageApp(QMainWindow):
         self.setup_mouse_selection()  # Connect mouse events
 
         # Google Maps widget
-        self.google_maps_view = QWebEngineView()
+        if QWebEngineView is not None:
+            self.google_maps_view = QWebEngineView()
+            try:
+                self.google_maps_view.setPage(_LoggingWebPage(self.google_maps_view))
+            except Exception:
+                pass
+            try:  # the local page loads Leaflet and the basemap tiles from the internet
+                self.google_maps_view.settings().setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+            except Exception:
+                pass
+        else:  # PyQtWebEngine not installed: the interactive web-map view is disabled
+            self.google_maps_view = QLabel("Web map view needs PyQtWebEngine (pip install PyQtWebEngine).")
+            self.google_maps_view.setAlignment(Qt.AlignCenter)
         self.stacked_widget.addWidget(self.google_maps_view)
 
         # Add components to upper layout
@@ -429,6 +506,15 @@ class SatelliteImageApp(QMainWindow):
         # export_action.setShortcut('Ctrl+E')
         # export_action.triggered.connect(self.save_as_image)
         # file_menu.addAction(export_action)
+
+        export_map_action = QAction('Export Map (PDF/PNG/JPEG/TIFF/SVG)...', self)
+        export_map_action.setShortcut('Ctrl+Shift+E')
+        export_map_action.triggered.connect(self.export_map_dialog)
+        file_menu.addAction(export_map_action)
+
+        stack_action = QAction('Stack Sentinel-2 Bands (one file per date)...', self)
+        stack_action.triggered.connect(self.stack_bands_dialog)
+        file_menu.addAction(stack_action)
 
         print_action = QAction('Print', self)
         print_action.triggered.connect(self.print_image)
@@ -483,7 +569,6 @@ class SatelliteImageApp(QMainWindow):
             image_enhancements_menu.addAction(action)
 
 
-
         resample_action = QAction('Resample Image', self)
         resample_action.triggered.connect(self.resample_image)
         image_enhancements_menu.addAction(resample_action)
@@ -515,10 +600,6 @@ class SatelliteImageApp(QMainWindow):
         aspect_action.triggered.connect(self.calculate_aspect)
         dem_menu.addAction(aspect_action)
 
-        wet_area_action = QAction('Detect Wet Areas (Sentinel-1)', self)
-        wet_area_action.triggered.connect(self.detect_wet_areas)
-        dem_menu.addAction(wet_area_action)
-
 
         flow_accumulation_action = QAction('Flow Accumulation', self)
         flow_accumulation_action.triggered.connect(self.calculate_flow_accumulation)
@@ -527,6 +608,19 @@ class SatelliteImageApp(QMainWindow):
         stream_network_action = QAction('Calculate Stream Network', self)
         stream_network_action.triggered.connect(self.calculate_stream_network)
         dem_menu.addAction(stream_network_action)
+
+        dem_menu.addSeparator()
+        watershed_action = QAction('Watershed + Basin Morphometrics (click pour point)', self)
+        watershed_action.triggered.connect(self.delineate_watershed_tool)
+        dem_menu.addAction(watershed_action)
+
+        hand_action = QAction('HAND (Height Above Nearest Drainage)', self)
+        hand_action.triggered.connect(self.calculate_hand)
+        dem_menu.addAction(hand_action)
+
+        twi_action = QAction('TWI and SPI (wetness / stream power)', self)
+        twi_action.triggered.connect(self.calculate_twi_spi)
+        dem_menu.addAction(twi_action)
 
         # DrainageChannels_action = QAction('Generate Drainage Channels', self)
         # DrainageChannels_action.triggered.connect(self.generate_drainage_channels)
@@ -554,8 +648,6 @@ class SatelliteImageApp(QMainWindow):
         satellite_menu.addAction(raster_calc_action)
 
 
-
-
         # Setup edge detection tools menu actions
         canny_action = QAction('Canny Edge Detection', self)
         canny_action.triggered.connect(self.canny_edge_detection)
@@ -581,6 +673,10 @@ class SatelliteImageApp(QMainWindow):
         kmeans_action = QAction('Classify with K-Means', self)
         kmeans_action.triggered.connect(self.classify_with_kmeans)
         image_classification_menu.addAction(kmeans_action)
+
+        supervised_action = QAction('Supervised Classification (RF / SVM)...', self)
+        supervised_action.triggered.connect(self.supervised_classification)
+        image_classification_menu.addAction(supervised_action)
 
         mean_shift_action = QAction('Mean-Shift Segmentation', self)
         mean_shift_action.triggered.connect(self.mean_shift_segmentation)
@@ -665,9 +761,6 @@ class SatelliteImageApp(QMainWindow):
         editing_menu.addAction(split_action)
 
 
-        reshape_action = QAction('Reshape Polygons', self)
-        reshape_action.triggered.connect(self.polygon_processor.reshape_polygons)
-        editing_menu.addAction(reshape_action)
 
         delete_part_action = QAction('Delete Polygon Parts', self)
         delete_part_action.triggered.connect(self.polygon_processor.delete_polygon_parts)
@@ -793,6 +886,13 @@ class SatelliteImageApp(QMainWindow):
         save_changes_action = QAction('Save Changes Result', self)
         save_changes_action.triggered.connect(self.save_change_results)
         change_detection_menu.addAction(save_changes_action)
+        change_detection_menu.addSeparator()
+        sens_action = QAction('Sensitivity Analysis (threshold k, normalisation)...', self)
+        sens_action.triggered.connect(self.change_sensitivity)
+        change_detection_menu.addAction(sens_action)
+        fa_action = QAction('False-Alarm Test (two images without real change)...', self)
+        fa_action.triggered.connect(lambda: self.detect_changes(control=True))
+        change_detection_menu.addAction(fa_action)
 
                 # تفعيل القائمة السياقية
         self.info_box.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -807,7 +907,7 @@ class SatelliteImageApp(QMainWindow):
         view_menu.addAction(toggle_google_maps_action)
 
         self.setWindowTitle('Space GeoVision Software v1.0')
-        self.setWindowIcon(QIcon('D:\\Python_Codes\\icons\\Asset 4@2x.png'))
+        self.setWindowIcon(QIcon(resource_path("Asset 4@2x.png")))
         self.setIconSize(QSize(30, 60))
         self.setGeometry(200, 200, 1200, 800)
         #self.setGeometry(0, 0, 1920, 1080)
@@ -819,20 +919,10 @@ class SatelliteImageApp(QMainWindow):
                 style = f.read()
                 self.setStyleSheet(style)
         except Exception as e:
-            print(f"Error loading stylesheet: {str(e)}")
-
+            logging.info(f"Error loading stylesheet: {str(e)}")
 ##########################################  The End of def initUI
 
-    def setup_edit_connections(self):
-        self.actionStart_Editing.triggered.connect(self.polygon_processor.start_editing)
-        self.actionSave_Edits.triggered.connect(self.polygon_processor.save_edits)
-        self.actionStop_Editing.triggered.connect(
-            lambda: self.polygon_processor.stop_editing(False))
     # Add these methods to your class:
-    def show_error(self, message):
-        """Show critical error message"""
-        QMessageBox.critical(self, "Error", message)
-        self.statusBar().showMessage(f"Error: {message}", 5000)
     
     def show_warning(self, message):
         """Show warning message"""
@@ -863,9 +953,9 @@ class SatelliteImageApp(QMainWindow):
         
         
         # Selection tools
-        self.rect_select_action = QAction(QIcon("d:\\Python_Codes\\icons\\select_rect.png"), "Rectangle Select", self)
-        self.poly_select_action = QAction(QIcon("d:\\Python_Codes\\icons\\select_poly.png"), "Polygon Select", self)
-        self.clear_select_action = QAction(QIcon("d:\\Python_Codes\\icons\\clear_select.png"), "Clear Selection", self)
+        self.rect_select_action = QAction(QIcon(resource_path("select_rect.png")), "Rectangle Select", self)
+        self.poly_select_action = QAction(QIcon(resource_path("select_poly.png")), "Polygon Select", self)
+        self.clear_select_action = QAction(QIcon(resource_path("clear_select.png")), "Clear Selection", self)
         
         # Connect signals
         self.rect_select_action.triggered.connect(self._activate_rectangle_selection)
@@ -883,65 +973,8 @@ class SatelliteImageApp(QMainWindow):
         self.selection_points = []
         self.temp_shape = None
 
-    def _activate_rectangle_selection(self):
-        """Activate rectangle selection mode"""
-        self.selection_mode = 'rectangle'
-        self.canvas.setCursor(Qt.CrossCursor)
-        self.statusBar().showMessage("Rectangle selection: Click and drag to select features")
-        
-        # Clear any previous selection
-        self._clear_selection(update_display=False)
-
-        
-        # Show instructions
-        QMessageBox.information(self, "Rectangle Selection",
-            "Rectangle Selection Mode\n\n"
-            "1. Click and hold left mouse button to start selection\n"
-            "2. Drag to define selection area\n"
-            "3. Release to finalize selection\n"
-            "4. Right-click to cancel")
     
-    def show_selection_instructions(self):
-        """Show instructions for polygon selection mode"""
-        instructions = (
-            "Polygon Selection Mode\n\n"
-            "1. Click to add polygon vertices\n"
-            "2. Continue clicking to add more points\n"
-            "3. Right-click to complete the selection\n"
-            "4. Press ESC to cancel"
-        )
-        QMessageBox.information(self, "Selection Instructions", instructions)
 
-    def _activate_polygon_selection(self):
-        """Activate polygon selection mode"""
-        self.selection_mode = 'polygon'
-        self.canvas.setCursor(Qt.CrossCursor)
-        self.statusBar().showMessage("Polygon selection: Click to add points, right-click to finish")
-        
-        # Clear any previous selection
-        self._clear_selection(update_display=False)
-        self.selection_points = []
-        
-        # Show instructions
-        QMessageBox.information(self, "Polygon Selection",
-            "Polygon Selection Mode\n\n"
-            "1. Click to add polygon vertices\n"
-            "2. Continue clicking to add more points\n"
-            "3. Right-click to complete the selection\n"
-            "4. Press ESC to cancel")
-
-    def _clear_selection(self, update_display=True):
-        """Clear current selection"""
-        if hasattr(self.polygon_processor, 'selected_features'):
-            self.polygon_processor.selected_features.clear()
-        
-        self.selection_mode = None
-        self.selection_points = []
-        self.temp_shape = None
-        
-        if update_display:
-            self.update_map_display()
-        self.statusBar().showMessage("Selection cleared")
 
     def _activate_rectangle_selection(self):
         """Activate rectangle selection mode"""
@@ -995,9 +1028,6 @@ class SatelliteImageApp(QMainWindow):
         """Activate line drawing on the canvas"""
         self.canvas.set_drawing_mode('line', callback)
         
-    def activate_polygon_drawing_mode(self, callback):
-        """Activate polygon drawing on the canvas"""
-        self.canvas.set_drawing_mode('polygon', callback)
         
     def update_map_display(self):
         """
@@ -1054,17 +1084,17 @@ class SatelliteImageApp(QMainWindow):
                 
                 # Handle raster layers
                 elif 'image' in layer_data:
-                    if len(layer_data['image'].shape) == 2:  # Single band
-                        self.ax.imshow(layer_data['image'], cmap='gray')
-                    else:  # Multi-band
-                        # Handle RGB images (transpose to HxWxC)
-                        if layer_data['image'].shape[0] in [3, 4]:
-                            img = np.transpose(layer_data['image'], (1, 2, 0))
-                            self.ax.imshow(img)
-                        else:
-                            # Display first 3 bands if more than 3
-                            img = np.transpose(layer_data['image'][:3], (1, 2, 0))
-                            self.ax.imshow(img)
+                    # Drawn in map coordinates so that vector overlays (also in map coordinates) line up with it
+                    lp = layer_data.get('profile') or {}
+                    arr = np.asarray(layer_data['image'])
+                    if arr.ndim == 2:  # Single band
+                        _, spec = georef.draw_raster(self.ax, arr, lp, cmap='gray')
+                    elif arr.shape[0] in [3, 4]:  # RGB(A): channels first -> HxWxC
+                        _, spec = georef.draw_raster(self.ax, np.transpose(arr, (1, 2, 0)), lp)
+                    elif arr.shape[0] == 1:
+                        _, spec = georef.draw_raster(self.ax, arr[0], lp, cmap='gray')
+                    else:  # more than 3 bands: show the first three
+                        _, spec = georef.draw_raster(self.ax, np.transpose(arr[:3], (1, 2, 0)), lp)
             
             # Draw temporary shapes (selection/editing)
             if hasattr(self, 'temp_shape') and self.temp_shape:
@@ -1209,59 +1239,33 @@ class SatelliteImageApp(QMainWindow):
             from shapely.geometry import Polygon
             poly = Polygon([[p.x(), p.y()] for p in self.polygon_points])
             
-            # Add to your shapefile (example)
-            if hasattr(self, 'active_layer'):
-                self.active_layer.add_feature(poly)
-                self.logger.info("Added polygon to shapefile")
-            
+            active = getattr(self, 'active_layer', None)
+            if active is not None and hasattr(active, 'add_feature'):
+                active.add_feature(poly)
+                logging.info("Added polygon to active layer")
+
             # Reset drawing state
             self.polygon_points = []
             self.temp_polygon = None
             self.update()
             
         except Exception as e:
-            self.logger.error(f"Error finalizing polygon: {str(e)}")
+            logging.error("Error finalizing polygon: %s", e)
             QMessageBox.critical(self, "Error", 
                             f"Could not create polygon: {str(e)}")
 
-    def finalize_polygon_selection(self):
-        """Process completed polygon selection"""
-        if len(self.selection_points) >= 3:
-            polygon = Polygon(self.selection_points)
-            layer_name = self.polygon_processor.get_selected_vector_layer()
-            
-            if layer_name and layer_name in self.layers:
-                gdf = self.layers[layer_name]['gdf']
-                selected = gdf[gdf.geometry.intersects(polygon)]
-                self.polygon_processor.set_selected_features(selected.index.tolist())
-        
-        self.selection_mode = None
-        self.selection_points = []
-        self.update_map_display()
 
-    def finalize_selection(self):
-        """Process completed selection"""
-        if self.selection_mode == 'rectangle':
-            self.polygon_processor.set_selected_features(self._get_rectangle_selection())
-        elif self.selection_mode == 'polygon':
-            self.polygon_processor.set_selected_features(self._get_polygon_selection())
-            
-        self.selection_mode = None
-        self.update_map_display()
     
     def keyPressEvent(self, event):
             if event.key() == Qt.Key_Escape and self.polygon_points:
                 self.polygon_points = []
                 self.temp_polygon = None
                 self.update() 
-    def snap_to_features(self, point):
-        """Implement snapping logic if needed"""
-        # Your snapping implementation here
-        return point
     
     def setup_mouse_selection(self):
         """Connect mouse events for image selection"""
         self.canvas.mpl_connect('button_press_event', self.on_image_click)
+        self.canvas.mpl_connect('motion_notify_event', self._on_mouse_move)
 
     # def on_image_click(self, event):
     #     """Handle mouse clicks on the image display"""
@@ -1295,17 +1299,7 @@ class SatelliteImageApp(QMainWindow):
                             break
                     break
         except Exception as e:
-            print(f"Error handling image click: {e}")
-
-
-    def add_layer(self):
-        """
-        إضافة طبقة جديدة إلى القائمة.
-        """
-        layer_name, ok = QInputDialog.getText(self, "Add Layer", "Enter layer name:")
-        if ok and layer_name:
-            self.add_layer_to_list(layer_name, None, None)  # يمكنك استبدال None ببيانات الصورة والبروفايل
-
+            logging.info(f"Error handling image click: {e}")
     def delete_layer(self):
         """
         Delete the selected layer from the list along with its image and legend
@@ -1314,29 +1308,6 @@ class SatelliteImageApp(QMainWindow):
         if selected_item:
             self.delete_layer_from_list(selected_item)
 
-
-    def show_context_menu(self, position):
-        """
-        عرض قائمة منسدلة لحذف الملف المحدد.
-        """
-        item = self.layer_list.itemAt(position)
-        if item:
-            menu = QMenu(self)
-            delete_action = menu.addAction("Delete Layer")
-            delete_action.triggered.connect(lambda: self.delete_layer_from_list(item))
-            menu.exec_(self.layer_list.viewport().mapToGlobal(position))
-
-    def add_layer_to_list(self, layer_name, image, profile):
-        """
-        إضافة ملف إلى قائمة الطبقات.
-        """
-        self.layers[layer_name] = {
-            'image': image,
-            'profile': profile,
-            'file_name': layer_name
-        }
-        item = QListWidgetItem(layer_name)
-        self.layer_list.addItem(item)
 
     def delete_layer_from_list(self, item):
         layer_name = item.text()
@@ -1357,13 +1328,84 @@ class SatelliteImageApp(QMainWindow):
         """
         self.ax.clear()  # مسح المحتوى من الرسم البياني
         self.canvas.draw()  # إعادة رسم القماش
-        print("Display cleared.")
+        logging.info("Display cleared.")
+    def _decorate_map_axes(self, spec):
+        """Axis labels/ticks in real coordinates (degrees for geographic CRS, metres otherwise)."""
+        georef.decorate_axes(self.ax, spec)
 
-    
+    def _inherited_profile(self, shape):
+        """Grid (transform + CRS) for a result array that has no layer of its own: that of the layer it was computed
+        from (rescaled when the size differs); ``{}`` - pixel axes - when nothing georeferenced is known."""
+        cur = self.layers.get(getattr(self, 'current_layer', None))
+        sources = []
+        if isinstance(cur, dict):
+            sources.append((cur.get('profile'), cur.get('image')))
+        sources.append((getattr(self, 'profile', None), getattr(self, 'image', None)))
+        return georef.inherit_profile(sources, shape)
+
+    def _on_mouse_move(self, event):
+        """Status-bar read-out: map coordinates, pixel (row, col) and value under the cursor."""
+        try:
+            if event.inaxes is not self.ax or event.xdata is None:
+                self.statusBar().clearMessage()
+                return
+            layer = self.layers.get(getattr(self, 'current_layer', None))
+            if not isinstance(layer, dict) or layer.get('image') is None:
+                return
+            img = np.asarray(layer['image'])
+            prof = layer.get('profile') or {}
+            tr = prof.get('transform')
+            h, w = img.shape[-2:]
+            spec = georef.axis_spec(tr, prof.get('crs'), h, w)
+            if spec.extent is None:
+                col, row = int(event.xdata + 0.5), int(event.ydata + 0.5)
+                where = f"col {col}, row {row}"
+            else:
+                rc = georef.map_to_pixel(tr, event.xdata, event.ydata)
+                if rc is None:
+                    return
+                row, col = rc
+                if spec.geographic:
+                    where = (f"{georef.format_degrees(event.xdata, False, 5)}  "
+                             f"{georef.format_degrees(event.ydata, True, 5)}  |  row {row}, col {col}")
+                else:
+                    where = f"E {event.xdata:,.1f}  N {event.ydata:,.1f}  |  row {row}, col {col}"
+            if 0 <= row < h and 0 <= col < w:
+                vals = img[..., row, col] if img.ndim == 3 else img[row, col]
+                vals = np.atleast_1d(vals)
+                txt = ", ".join("nodata" if not np.isfinite(v) else f"{float(v):.4g}" for v in vals[:4])
+                self.statusBar().showMessage(f"{where}  |  value: {txt}")
+            else:
+                self.statusBar().showMessage(where)
+        except Exception:
+            pass  # a cursor read-out must never raise inside a Qt slot
+
+    def _redraw_classified_layer(self, layer_data, layer_name):
+        """Re-draw a categorical layer with its legend. Returns True if the layer was classified (and drawn)."""
+        ld = layer_data
+        if isinstance(ld, np.ndarray):
+            ld = self.layers.get(layer_name)
+        if not isinstance(ld, dict) or not ld.get('classified') or ld.get('image') is None:
+            return False
+        arr = np.asarray(ld['image'])
+        if arr.ndim == 3:
+            arr = arr[0]
+        names = ld.get('class_names')
+        if not names:
+            vals = [int(v) for v in np.unique(arr) if int(v) != 0]
+            names = {v: f"Class {v}" for v in vals}
+        profile = ld.get('profile') or None
+        self.display_classified_image(arr, profile=profile, names=names, title=ld.get('title') or layer_name)
+        return True
+
     def display_raster_layer(self, layer_data, layer_name, show_grid=True):
         """Display raster layer with proper handling of float64 and NaN values"""
         try:
-            
+            # Classified results (supervised, K-Means, Mean-Shift ...) always come back exactly as first shown:
+            # class colours, legend, title and real map coordinates -- never a continuous colour stretch.
+            if self._redraw_classified_layer(layer_data, layer_name):
+                return
+
             # Clear previous plot completely
             self.fig.clf()
             self.ax = self.fig.add_subplot(111)
@@ -1371,7 +1413,22 @@ class SatelliteImageApp(QMainWindow):
             
             # Ensure layer_data is properly structured
             if isinstance(layer_data, np.ndarray):
-                layer_data = {'image': layer_data, 'profile': {}}
+                existing = self.layers.get(layer_name)
+                if isinstance(existing, dict):
+                    # Keep the stored layer (profile/georeferencing, colormap, ...); only its pixels are refreshed.
+                    # Never replace it by a profile-less dict: that loses the geotransform.
+                    stored = existing.get('image')
+                    if stored is None or getattr(stored, 'shape', None) != layer_data.shape:
+                        if stored is not None and np.size(stored) == layer_data.size:
+                            layer_data = np.reshape(layer_data, stored.shape)
+                        existing.pop('display_range', None)
+                        existing.pop('original_dims', None)
+                    existing['image'] = layer_data
+                    layer_data = existing
+                else:
+                    layer_data = {'image': layer_data, 'profile': self._inherited_profile(layer_data.shape)}
+            if 'display_range' not in layer_data and layer_data.get('vmin') is not None and layer_data.get('vmax') is not None:
+                layer_data['display_range'] = (layer_data['vmin'], layer_data['vmax'])
             
             # Safely get image data
             image = layer_data.get('image')
@@ -1393,6 +1450,11 @@ class SatelliteImageApp(QMainWindow):
             
             # Apply mask to image
             image = np.ma.masked_where(mask, image)
+
+            # Map coordinates: the raster is drawn in its real coordinates (pixel axes only if not georeferenced)
+            _hw = image.shape[-2:]
+            axis_spec = georef.axis_spec(profile.get('transform'), profile.get('crs'), int(_hw[0]), int(_hw[1]))
+            extent = axis_spec.extent
             
             # Store original image dimensions
             if 'original_dims' not in layer_data:
@@ -1421,10 +1483,10 @@ class SatelliteImageApp(QMainWindow):
                 
                 # Apply colormap with fallback for NaN values
                 cmap = layer_data.get('cmap', 'viridis')
-                cmap = plt.cm.get_cmap(cmap).copy()
+                cmap = _get_cmap(cmap).copy()
                 cmap.set_bad(color='red', alpha=0.5)  # Make NaN values red
                 
-                img = self.ax.imshow(display_image, 
+                img = self.ax.imshow(display_image, extent=extent,
                                 cmap=cmap,
                                 vmin=layer_data['display_range'][0],
                                 vmax=layer_data['display_range'][1])
@@ -1459,13 +1521,15 @@ class SatelliteImageApp(QMainWindow):
                 
                 # Transpose to (height, width, bands) and display
                 rgb_image = rgb_image.transpose(1, 2, 0)
-                self.ax.imshow(rgb_image)
+                self.ax.imshow(rgb_image, extent=extent)
                 
                 # Remove colorbar for RGB images
                 if hasattr(self, 'colorbar'):
                     self.colorbar.remove()
                     del self.colorbar
             
+            self._decorate_map_axes(axis_spec)
+
             # Configure grid if enabled
             if show_grid:
                 self.ax.grid(True, color='white', linestyle=':', alpha=0.3)
@@ -1479,9 +1543,10 @@ class SatelliteImageApp(QMainWindow):
             # Update current layer reference
             self.current_layer = layer_name
             self.layers[layer_name] = layer_data  # Save any modifications
-            
+            self.update_info_box(layer_data=layer_data)
+
         except Exception as e:
-            print(f"Error displaying layer {layer_name}: {str(e)}")
+            logging.info(f"Error displaying layer {layer_name}: {str(e)}")
             traceback.print_exc()
             self._fallback_display(layer_name)
 
@@ -1509,6 +1574,7 @@ class SatelliteImageApp(QMainWindow):
                 self.display_raster_layer(layer_data, layer_name)
             elif 'gdf' in layer_data:
                 self.display_vector_layer(layer_data, layer_name)
+                self.update_info_box(layer_data=layer_data)
                 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Layer switch failed: {str(e)}")
@@ -1653,132 +1719,12 @@ class SatelliteImageApp(QMainWindow):
             self.canvas.draw()
 
         except Exception as e:
-            print(f"Vector display error: {str(e)}")
+            logging.info(f"Vector display error: {str(e)}")
             self._fallback_display(layer_name)
 
-    def _draw_labels(self, gdf, layer_data):
-        """Draw labels for vector features"""
-        label_field = layer_data['label_field']
-        if label_field not in gdf.columns:
-            return
-            
-        # Get label styling properties
-        font_family = layer_data.get('label_font', 'Arial')
-        font_size = layer_data.get('label_size', 10)
-        color = layer_data.get('label_color', '#000000')
-        placement = layer_data.get('label_placement', 'Around Point')
-        
-        # Create font properties
-        font = {'family': font_family,
-                'size': font_size,
-                'color': color}
-        
-        # Plot labels for each feature
-        for idx, row in gdf.iterrows():
-            geom = row.geometry
-            label_text = str(row[label_field])
-            
-            if geom.geom_type in ['Point', 'MultiPoint']:
-                if geom.geom_type == 'MultiPoint':
-                    centroid = geom.centroid
-                else:
-                    centroid = geom
-                    
-                x, y = centroid.x, centroid.y
-                
-                # Adjust placement based on settings
-                if placement == 'Above Point':
-                    va = 'bottom'
-                    ha = 'center'
-                    y_offset = font_size * 0.005  # Small offset
-                elif placement == 'Below Point':
-                    va = 'top'
-                    ha = 'center'
-                    y_offset = -font_size * 0.005
-                elif placement == 'Left of Point':
-                    va = 'center'
-                    ha = 'right'
-                    x_offset = -font_size * 0.005
-                elif placement == 'Right of Point':
-                    va = 'center'
-                    ha = 'left'
-                    x_offset = font_size * 0.005
-                else:  # Around Point (default)
-                    va = 'center'
-                    ha = 'center'
-                    x_offset = 0
-                    y_offset = 0
-                
-                self.ax.text(x + x_offset, y + y_offset, label_text, 
-                            fontdict=font, va=va, ha=ha)
-                
-            elif geom.geom_type in ['LineString', 'MultiLineString']:
-                # Place label at midpoint
-                if geom.geom_type == 'MultiLineString':
-                    line = geom.geoms[0]  # Just use first line for simplicity
-                else:
-                    line = geom
-                    
-                midpoint = line.interpolate(0.5, normalized=True)
-                self.ax.text(midpoint.x, midpoint.y, label_text, 
-                            fontdict=font, va='center', ha='center')
-                
-            elif geom.geom_type in ['Polygon', 'MultiPolygon']:
-                # Place label at centroid
-                if geom.geom_type == 'MultiPolygon':
-                    centroid = geom.centroid
-                else:
-                    centroid = geom.centroid
-                    
-                self.ax.text(centroid.x, centroid.y, label_text, 
-                            fontdict=font, va='center', ha='center')
     
 
-    def _setup_coord_display(self, image, profile):
-        """Setup coordinate display with value reading"""
-        if hasattr(profile, 'transform') and profile.transform:
-            # Geographic coordinates
-            def format_coord(x, y):
-                col, row = ~profile.transform * (x, y)
-                if 0 <= row < image.shape[-2] and 0 <= col < image.shape[-1]:
-                    if image.ndim == 2:
-                        val = image[int(row), int(col)]
-                    elif image.ndim == 3 and image.shape[0] == 1:
-                        val = image[0, int(row), int(col)]
-                    else:
-                        val = "Multi-band"
-                    
-                    if isinstance(val, np.ma.core.MaskedConstant):
-                        return f"X={x:.2f}, Y={y:.2f} | NoData"
-                    return f"X={x:.2f}, Y={y:.2f} | Value={val:.2f}"
-                return f"X={x:.2f}, Y={y:.2f}"
-        else:
-            # Pixel coordinates
-            def format_coord(x, y):
-                if 0 <= x < image.shape[-1] and 0 <= y < image.shape[-2]:
-                    if image.ndim == 2:
-                        val = image[int(y), int(x)]
-                    elif image.ndim == 3 and image.shape[0] == 1:
-                        val = image[0, int(y), int(x)]
-                    else:
-                        val = "Multi-band"
-                    
-                    if isinstance(val, np.ma.core.MaskedConstant):
-                        return f"Col={int(x)}, Row={int(y)} | NoData"
-                    return f"Col={int(x)}, Row={int(y)} | Value={val:.2f}"
-                return f"Col={int(x)}, Row={int(y)}"
-        
-        self.ax.format_coord = format_coord 
 
-    def _get_image_extent(self, profile):
-        """Calculate image extent from geotransform if available"""
-        if hasattr(profile, 'transform') and profile.transform:
-            width = profile.width
-            height = profile.height
-            xmin, ymax = profile.transform * (0, 0)
-            xmax, ymin = profile.transform * (width, height)
-            return [xmin, xmax, ymin, ymax]
-        return None
     
     def _fallback_display(self, layer_name):
         """Simplest possible display when everything fails"""
@@ -1789,18 +1735,9 @@ class SatelliteImageApp(QMainWindow):
             self.ax.text(0.5, 0.5, layer_name, ha='center', va='center')
             self.fig.tight_layout(pad=0)
             self.canvas.draw()
-        except:
+        except Exception:
             self.canvas.draw()    
 
-    def mouse_click_handler(self, event):
-        """Safe mouse click handler"""
-        if event.inaxes != self.ax or self.current_layer not in self.layers:
-            return
-        
-        try:
-            self.display_raster_layer(self.layers[self.current_layer], self.current_layer)
-        except Exception:
-            pass  # Silently fail to prevent recursive errors
 
 #$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
  
@@ -1840,7 +1777,7 @@ class SatelliteImageApp(QMainWindow):
         general_layout.addRow("Source:", source_label)
         
         # CRS information
-        crs_info = self.get_crs_info(layer_data.get('gdf').crs if 'gdf' in layer_data else layer_data.get('profile', {}).get('crs'))
+        crs_info = self.get_crs_info(layer_data.get('gdf').crs if 'gdf' in layer_data else (layer_data.get('profile') or {}).get('crs'))
         crs_label = QLabel(f"{crs_info.get('name', 'Unknown')} ({crs_info.get('epsg', 'Unknown')})")
         general_layout.addRow("Coordinate System:", crs_label)
         
@@ -2472,58 +2409,12 @@ class SatelliteImageApp(QMainWindow):
         self.layers[layer_name]['outline_width'] = width
         self.redraw_all_layers()
 
-    def _set_label_placement(self, layer_name, placement):
-        """Set label placement for the layer"""
-        self.layers[layer_name]['label_placement'] = placement
-        self.redraw_all_layers()
 
     def _set_label_offset(self, layer_name, offset):
         """Set label offset in pixels"""
         self.layers[layer_name]['label_offset'] = offset
         self.redraw_all_layers()
 
-    def _draw_vector_layer(self, layer_name, layer_data):
-        """Draw vector layer with current symbology"""
-        gdf = layer_data['gdf']
-        
-        if gdf.geometry.type.iloc[0] in ['Point', 'MultiPoint']:
-            self._draw_point_layer(layer_name, layer_data)
-        elif gdf.geometry.type.iloc[0] in ['LineString', 'MultiLineString']:
-            self._draw_line_layer(layer_name, layer_data)
-        elif gdf.geometry.type.iloc[0] in ['Polygon', 'MultiPolygon']:
-            self._draw_polygon_layer(layer_name, layer_data)
-
-    def _draw_point_layer(self, layer_name, layer_data):
-        """Draw points with current symbology settings"""
-        gdf = layer_data['gdf']
-        symbol = layer_data.get('point_symbol', 'Circle')
-        size = layer_data.get('point_size', 5)
-        color = QColor(layer_data.get('color', '#FF0000'))
-        rotation = layer_data.get('rotation', 0)
-
-        for _, row in gdf.iterrows():
-            point = row.geometry
-            if point.is_empty:
-                continue
-
-            # Create QGraphicsItem based on symbol type
-            if symbol == "Circle":
-                item = QGraphicsEllipseItem(-size/2, -size/2, size, size)
-            elif symbol == "Square":
-                item = QGraphicsRectItem(-size/2, -size/2, size, size)
-            elif symbol == "Triangle":
-                polygon = QPolygonF([
-                    QPointF(0, -size/2),
-                    QPointF(size/2, size/2),
-                    QPointF(-size/2, size/2)
-                ])
-                item = QGraphicsPolygonItem(polygon)
-            # ... (other symbol types)
-
-            item.setPos(point.x, point.y)
-            item.setBrush(QBrush(color))
-            item.setRotation(rotation)
-            self.scene.addItem(item)
 
     def _generate_metadata_text(self, layer_data):
         """Generate comprehensive metadata text for display in properties dialog
@@ -2601,7 +2492,7 @@ class SatelliteImageApp(QMainWindow):
                     metadata.append("Band Order: " + ", ".join(str(i) for i in range(img.shape[0])))
             
             # Profile information
-            if 'profile' in layer_data:
+            if layer_data.get('profile'):
                 profile = layer_data['profile']
                 metadata.append("\nProfile Information:")
                 metadata.append(f"  Driver: {profile.get('driver', 'Unknown')}")
@@ -2639,19 +2530,6 @@ class SatelliteImageApp(QMainWindow):
         
         return "\n".join(metadata)
 
-    def _change_crs(self, layer_name, label_widget):
-        """Change the CRS of a layer"""
-        # This would need a proper CRS selection dialog implementation
-        # For now just demonstrate the concept
-        new_crs = "EPSG:3857"  # Would come from dialog in real implementation
-        if 'gdf' in self.layers[layer_name]:
-            self.layers[layer_name]['gdf'] = self.layers[layer_name]['gdf'].to_crs(new_crs)
-        elif 'profile' in self.layers[layer_name]:
-            self.layers[layer_name]['profile']['crs'] = new_crs
-        
-        crs_info = self.get_crs_info(new_crs)
-        label_widget.setText(f"{crs_info.get('name', 'Unknown')} ({crs_info.get('epsg', 'Unknown')})")
-        self.redraw_all_layers()
 
     def _set_layer_visibility(self, layer_name, visible):
         """Set layer visibility"""
@@ -2663,10 +2541,6 @@ class SatelliteImageApp(QMainWindow):
         self.layers[layer_name]['transparency'] = value
         self.redraw_all_layers()
 
-    def _set_symbology_type(self, layer_name, symbology_type):
-        """Set the symbology type (single, categorized, graduated, etc.)"""
-        self.layers[layer_name]['symbology_type'] = symbology_type
-        self.redraw_all_layers()
 
     def _set_line_style(self, layer_name, style):
         """Set line style (solid, dash, etc.)"""
@@ -2683,10 +2557,6 @@ class SatelliteImageApp(QMainWindow):
         self.layers[layer_name]['fill_style'] = style
         self.redraw_all_layers()
 
-    def _set_color_ramp(self, layer_name, ramp):
-        """Set the color ramp for categorized/graduated symbology"""
-        self.layers[layer_name]['color_ramp'] = ramp
-        self.redraw_all_layers()
 
     def _pick_label_color(self, layer_name, button):
         """Pick a color for labels"""
@@ -2755,12 +2625,6 @@ class SatelliteImageApp(QMainWindow):
         self.ax.autoscale_view()
         self.canvas.draw()
 
-    def _pick_layer_color(self, layer_name, button):
-        color = QColorDialog.getColor()
-        if color.isValid():
-            self.layers[layer_name]['color'] = color.name()
-            button.setStyleSheet(f"background-color: {color.name()}")
-            self.redraw_all_layers()
 
     def _update_line_width(self, layer_name, width):
         self.layers[layer_name]['line_width'] = width
@@ -2874,103 +2738,159 @@ class SatelliteImageApp(QMainWindow):
         # Select color based on hash
         return ramp[hash_val % len(ramp)]
 
-    def _set_blend_mode(self, layer_name, mode):
-        """Set layer blending mode"""
-        self.layers[layer_name]['blend_mode'] = mode
-        self.redraw_all_layers()
-
-    def _set_label_buffer(self, layer_name, enabled):
-        """Enable/disable label buffer/halo"""
-        self.layers[layer_name]['label_buffer'] = enabled
-        self.redraw_all_layers()
-
-    def _set_buffer_size(self, layer_name, size):
-        """Set label buffer size"""
-        self.layers[layer_name]['buffer_size'] = size
-        self.redraw_all_layers()
-
-    def _set_buffer_color(self, layer_name, color):
-        """Set label buffer color"""
-        self.layers[layer_name]['buffer_color'] = color
-        self.redraw_all_layers()
-
 
 #$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
     def toggle_google_maps(self):
-        """
-        Toggle between the opened image and Google Maps.
-        """
+        """Switch between the image view and a web map (Esri / OSM / Google basemap) that shows the application's
+        georeferenced layers as overlays, opened at the extent currently displayed."""
         try:
-            if not self.google_maps_enabled:
-                # Switch to Google Maps view
-                self.google_maps_enabled = True
-
-                # Collect user input for center and zoom
-                while True:
-                    center, ok1 = QInputDialog.getText(
-                        self, "Map Center", "Enter center coordinates (lat, lon):\nExample: 37.8713, -122.2580"
-                    )
-                    if not ok1:
-                        return  # User clicked Cancel
-
-                    try:
-                        # Convert to list of floats and validate
-                        lat, lon = map(float, center.replace(" ", "").split(","))
-                        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-                            raise ValueError
-                        break
-                    except (ValueError, IndexError):
-                        QMessageBox.critical(self, "Error", "Invalid coordinates format.\nExample: 37.8713, -122.2580")
-
-                while True:
-                    zoom, ok2 = QInputDialog.getInt(
-                        self, "Map Zoom", "Enter zoom level (1-20):", 
-                        value=12, min=1, max=20
-                    )
-                    if ok2:
-                        break
-
-                # Create Folium map
-                folium_map = folium.Map(
-                    location=[lat, lon],
-                    zoom_start=zoom,
-                    control_scale=True,
-                    tiles=None  # Start with no base tiles
-                )
-
-                # Add Google Satellite layer
-                folium.TileLayer(
-                    tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-                    attr='Google Satellite',
-                    name='Google Satellite',
-                    subdomains='mt0mt1mt2mt3',
-                    overlay=False,
-                    control=False,
-                    max_native_zoom=20
-                ).add_to(folium_map)
-
-                # Add layer control
-                folium.LayerControl(position='topright').add_to(folium_map)
-
-                # Save to temp file
-                with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as temp_file:
-                    folium_map.save(temp_file.name)
-                    temp_file_path = temp_file.name
-
-                # Load into QWebEngineView
-                self.google_maps_view.load(QUrl.fromLocalFile(temp_file_path))
-                self.stacked_widget.setCurrentWidget(self.google_maps_view)
-                QMessageBox.information(self, "Google Maps", "Satellite view enabled")
-
-            else:
-                # Switch back to image view
+            if self.google_maps_enabled:
                 self.google_maps_enabled = False
                 self.stacked_widget.setCurrentWidget(self.image_display_widget)
-                QMessageBox.information(self, "Google Maps", "Satellite view disabled")
-
+                self.statusBar().showMessage("Image view", 3000)
+                return
+            if QWebEngineView is None:
+                QMessageBox.warning(self, "Web map", "The web map needs PyQtWebEngine:\n    pip install PyQtWebEngine")
+                return
+            chosen = self._choose_web_layers()
+            if chosen is None:
+                return                                   # cancelled
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                html, notes, n_over = self._build_web_map_html(selected=chosen)
+            finally:
+                QApplication.restoreOverrideCursor()
+            if n_over == 0 and not chosen:
+                notes = ["No layer selected: showing the basemap only."] + notes
+            with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as fh:
+                fh.write(html)
+                path = fh.name
+            self._web_map_file = path
+            self.google_maps_view.load(QUrl.fromLocalFile(path))
+            self.stacked_widget.setCurrentWidget(self.google_maps_view)
+            self.google_maps_enabled = True
+            self.statusBar().showMessage(f"Web map: {n_over} layer(s) as overlays (internet needed for the basemap)", 6000)
+            if notes:
+                QMessageBox.information(self, "Web map", "\n".join(notes[:8]))
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to toggle Google Maps: {str(e)}")
             self.google_maps_enabled = False
+            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, "Error", f"Failed to open the web map: {str(e)}")
+
+    def _web_layer_candidates(self):
+        """[(name, kind, ok, reason)] for every layer: rasters need a transform and CRS, vectors need a CRS."""
+        out = []
+        for name, layer in self.layers.items():
+            if not isinstance(layer, dict):
+                continue
+            if layer.get('image') is not None:
+                prof = layer.get('profile') or {}
+                ok = prof.get('crs') is not None and georef.is_georeferenced(prof.get('transform'), prof.get('crs'))
+                out.append((name, 'raster', ok, '' if ok else 'not georeferenced'))
+            elif layer.get('gdf') is not None:
+                ok = getattr(layer['gdf'], 'crs', None) is not None
+                out.append((name, 'vector', ok, '' if ok else 'no CRS'))
+        return out
+
+    def _choose_web_layers(self):
+        """Dialog with a check box per layer. Returns the set of chosen layer names, or None if cancelled."""
+        cands = self._web_layer_candidates()
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Layers to overlay on the web map")
+        dlg.setMinimumWidth(420)
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel("Tick the layers to draw over the basemap (later layers are drawn on top).\n"
+                             "You can still hide them or change their opacity on the map page."))
+        lst = QListWidget()
+        current = getattr(self, 'current_layer', None)
+        for name, kind, ok, why in cands:
+            it = QListWidgetItem(f"{name}   [{kind}]" + ("" if ok else f"   ({why})"))
+            it.setData(Qt.UserRole, name)
+            if ok:
+                it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+                it.setCheckState(Qt.Checked if (name == current or kind == 'vector') else Qt.Unchecked)
+            else:
+                it.setFlags(it.flags() & ~Qt.ItemIsEnabled)
+            lst.addItem(it)
+        lay.addWidget(lst)
+        row = QHBoxLayout()
+        b_all, b_none = QPushButton("Select all"), QPushButton("Select none")
+        row.addWidget(b_all); row.addWidget(b_none); row.addStretch(1)
+        lay.addLayout(row)
+
+        def set_all(state):
+            for i in range(lst.count()):
+                if lst.item(i).flags() & Qt.ItemIsUserCheckable:
+                    lst.item(i).setCheckState(state)
+        b_all.clicked.connect(lambda: set_all(Qt.Checked))
+        b_none.clicked.connect(lambda: set_all(Qt.Unchecked))
+        box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        box.accepted.connect(dlg.accept); box.rejected.connect(dlg.reject)
+        lay.addWidget(box)
+        if dlg.exec_() != QDialog.Accepted:
+            return None
+        return {lst.item(i).data(Qt.UserRole) for i in range(lst.count())
+                if (lst.item(i).flags() & Qt.ItemIsUserCheckable) and lst.item(i).checkState() == Qt.Checked}
+
+    def _build_web_map_html(self, selected=None, max_rasters=12, max_features=20000):
+        """(html, notes, number of raster overlays). The displayed layer is checked, the others can be ticked on the page."""
+        from rasterio.warp import transform_bounds
+        notes, overlays, vectors = [], [], []
+        current = getattr(self, 'current_layer', None)
+        for name in list(self.layers):                         # list order = drawing order (later layers on top)
+            layer = self.layers[name]
+            if not isinstance(layer, dict) or (selected is not None and name not in selected):
+                continue
+            if layer.get('image') is not None:
+                if len(overlays) >= max_rasters:
+                    notes.append(f"Only the first {max_rasters} raster layers are included ({name} skipped).")
+                    continue
+                prof = layer.get('profile') or {}
+                tr, crs = prof.get('transform'), prof.get('crs')
+                if crs is None or not georef.is_georeferenced(tr, crs):
+                    notes.append(f"'{name}' skipped: not georeferenced (no transform/CRS).")
+                    continue
+                try:
+                    img = np.asarray(layer['image'])
+                    dec, stride = webmap.decimate(img)
+                    rgba = webmap.render_rgba(dec, layer.get('cmap', 'viridis'),
+                                              *(layer.get('display_range') or (layer.get('vmin'), layer.get('vmax'))),
+                                              nodata=prof.get('nodata'))
+                    rgba, bounds = webmap.to_web_mercator(rgba, tr * tr.scale(stride), crs)
+                    overlays.append({'name': name, 'uri': webmap.png_data_uri(rgba), 'bounds': bounds,
+                                     'checked': True})
+                except Exception as exc:
+                    notes.append(f"'{name}' skipped: {exc}")
+            elif layer.get('gdf') is not None:
+                try:
+                    gdf = layer['gdf']
+                    if len(gdf) > max_features:
+                        notes.append(f"'{name}' skipped: {len(gdf):,} features (limit {max_features:,}).")
+                        continue
+                    if gdf.crs is None:
+                        notes.append(f"'{name}' skipped: no CRS.")
+                        continue
+                    vectors.append({'name': name, 'geojson': json.loads(gdf.to_crs(4326)[['geometry']].to_json()),
+                                    'checked': True})
+                except Exception as exc:
+                    notes.append(f"'{name}' skipped: {exc}")
+        # open at the extent currently shown (zoomed/panned) when the displayed layer is georeferenced
+        view = None
+        try:
+            shown = self.layers.get(current) or {}
+            sp = shown.get('profile') or {}
+            if shown.get('image') is not None and sp.get('crs') is not None and georef.is_georeferenced(sp.get('transform'), sp.get('crs')):
+                x0, x1 = sorted(self.ax.get_xlim())
+                y0, y1 = sorted(self.ax.get_ylim())
+                w, s, e, n = transform_bounds(sp['crs'], 'EPSG:4326', x0, y0, x1, y1)
+                view = (s, w, n, e)
+        except Exception:
+            view = None
+        if view is None and overlays:
+            view = (min(o['bounds'][0] for o in overlays), min(o['bounds'][1] for o in overlays),
+                    max(o['bounds'][2] for o in overlays), max(o['bounds'][3] for o in overlays))
+        return webmap.build_html(overlays, vectors, view, opacity=0.7), notes, len(overlays)
+
 ##########################################################################################################3333
     # def validate_hex_color(color):
     #     """
@@ -2990,82 +2910,7 @@ class SatelliteImageApp(QMainWindow):
     # except ValueError as e:
     #     print(e)
     
-    def validate_hex_color(color):
-        """
-        Validates whether the given string is a valid hexadecimal color code.        
-        Parameters:
-            color (str): The color code to validate.            
-        Returns:
-            bool: True if the color code is valid.            
-        Raises:
-            ValueError: If the color code is invalid.
-        """
-        # Define the regex pattern for a valid hex color code
-        hex_pattern = r'^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$'
-        
-        # Check if the color matches the pattern
-        if not re.match(hex_pattern, color):
-            raise ValueError(f"Invalid hex color code: {color}. Expected format: '#RGB' or '#RRGGBB'.")        
-        return True    
 ################################################################################################################
-    def choose_bands(self, num_bands):
-        """
-        Prompt the user to choose between displaying 1 band or 3 bands,
-        then select the appropriate bands.
-        """
-        # عرض خيارات العرض: 1 Band أو 3 Bands
-        display_option, ok = QInputDialog.getItem(
-            self,
-            "Display Option",
-            "This image has {} bands. Choose display option:".format(num_bands),
-            ["1 Band", "3 Bands"],  # الخيارات المتاحة
-            0,  # الخيار الافتراضي (1 Band)
-            False  # لا يسمح بالتحرير
-        )
-        
-        if not ok:
-            return None  # إذا ضغط المستخدم Cancel
-
-        if display_option == "1 Band":
-            # اختيار باند واحد
-            band, ok = QInputDialog.getItem(
-                self,
-                "Select Band",
-                "Choose 1 band to display:",
-                [str(i) for i in range(1, num_bands + 1)],  # قائمة الباندات المتاحة
-                0,  # الخيار الافتراضي
-                False  # لا يسمح بالتحرير
-            )
-            if ok and band:
-                return [int(band)]  # إرجاع الباند المختار كقائمة من عنصر واحد
-            else:
-                return None
-
-        elif display_option == "3 Bands":
-            # اختيار 3 باندات
-            bands, ok = QInputDialog.getText(
-                self,
-                "Select Bands",
-                "Enter 3 bands to display (comma-separated):"
-            )
-            if ok and bands:
-                try:
-                    # تحويل النص المدخل إلى قائمة من الأعداد الصحيحة
-                    selected_bands = [int(band.strip()) for band in bands.split(',')]
-                    if len(selected_bands) == 3:
-                        # التأكد من أن الأبعاد المختارة صالحة
-                        for band in selected_bands:
-                            if band < 1 or band > num_bands:
-                                QMessageBox.warning(self, "Warning", f"Invalid band: {band}. Please choose from 1 to {num_bands}.")
-                                return None
-                        return selected_bands
-                    else:
-                        QMessageBox.warning(self, "Warning", "Please select exactly 3 bands.")
-                        return None
-                except ValueError:
-                    QMessageBox.warning(self, "Warning", "Invalid input. Please enter numbers separated by commas.")
-                    return None
-        return None
 ##########################################################################################################
 
     # def load_image(self):
@@ -3074,7 +2919,7 @@ class SatelliteImageApp(QMainWindow):
     #         try:
     #             with rasterio.open(file_name) as src:
     #                 image = src.read()
-    #                 profile = src.profile
+    #                 profile = dict(src.profile)  # rasterio's Profile is a UserDict, not a dict
     #                 layer_name = os.path.basename(file_name)
 
     #                 if image.shape[0] > 3:
@@ -3136,7 +2981,7 @@ class SatelliteImageApp(QMainWindow):
             # Original raster handling
             with rasterio.open(file_name) as src:
                 image = src.read()
-                profile = src.profile
+                profile = dict(src.profile)  # rasterio's Profile is a UserDict, not a dict
                 layer_name = os.path.basename(file_name)
 
                 # Handle multi-band images
@@ -3183,463 +3028,101 @@ class SatelliteImageApp(QMainWindow):
 
     def load_vector(self):
         file_name, _ = QFileDialog.getOpenFileName(
-            self, "Open Vector File", "", 
-            "Vector Files (*.shp *.geojson *.gpkg)"
+            self, "Open Vector File", "",
+            "Vector Files (*.shp *.geojson *.json *.gpkg *.kml *.gml);;All Files (*)"
         )
-        
         if file_name:
-            try:
-                # Read file with GeoPandas
-                gdf = gpd.read_file(file_name)
-                
-                # Validate
-                if gdf.empty or 'geometry' not in gdf.columns:
-                    self.show_warning("Invalid vector file: Empty or missing geometry")
-                    return
-                    
-                # Store in processor
-                self.polygon_processor.current_gdf = gdf
-                self.polygon_processor.original_file_path = file_name
-                self.polygon_processor.editing_active = False
-                
-                # Add to layer list
-                layer_name = os.path.basename(file_name)
-                layer_data = {
-                    'type': 'vector',
-                    'gdf': gdf,
-                    'file_name': file_name,
-                    'style': {'color': '#FF0000', 'width': 1}
-                }
-                self.layers[layer_name] = layer_data  # Store layer data
-                
-                # Update UI - Pass BOTH arguments
-                item = QListWidgetItem(layer_name)
-                item.setIcon(QIcon(":/icons/vector.png"))
-                self.layer_list.addItem(item)
-                self.display_vector_layer(layer_data, layer_name)  # Fixed this line
-                self.update_info_box(layer_data=self.layers[layer_name])
-                
-                self.show_info(f"Successfully loaded {layer_name}")               
-                
-            except Exception as e:
-                self.show_error(f"Load failed: {str(e)}")
-                traceback.print_exc()
+            self.load_vector_file(file_name)
 
-    def on_layer_clicked(self, item):
-        """عند النقر على عنصر في قائمة الطبقات"""
-        layer_name = item.text()
-        if layer_name in self.layers:
+    def load_vector_file(self, file_name):
+        """Read a vector file with GeoPandas and add it as a layer. Shows an error dialog instead of raising."""
+        try:
+            if file_name.lower().endswith('.kmz'):
+                raise ValueError("KMZ is a zipped KML. Unzip it and open the .kml inside "
+                                 "(or convert it to GeoPackage in QGIS).")
+            gdf = gpd.read_file(file_name)
+            if gdf.empty or 'geometry' not in gdf.columns:
+                self.show_warning("Invalid vector file: empty or missing geometry")
+                return
+            self.polygon_processor.current_gdf = gdf
+            self.polygon_processor.original_file_path = file_name
+            self.polygon_processor.editing_active = False
+
+            layer_name = os.path.basename(file_name)
+            layer_data = {
+                'type': 'vector',
+                'gdf': gdf,
+                'file_name': file_name,
+                'style': {'color': '#FF0000', 'width': 1}
+            }
+            self.layers[layer_name] = layer_data
+            item = QListWidgetItem(layer_name)
+            item.setIcon(QIcon(":/icons/vector.png"))
+            self.layer_list.addItem(item)
+            self.display_vector_layer(layer_data, layer_name)
             self.update_info_box(layer_data=self.layers[layer_name])
+            self.show_info(f"Successfully loaded {layer_name}")
+        except Exception as exc:
+            logging.exception("Vector load failed")
+            self.show_error(f"Load failed: {exc}")
+
 
         
 
  
  ########################################## save image as functions
-    def save_as_image(self):
-        """Enhanced save function that handles both raster and vector data"""
-        try:
-            # Get the current layer/image info
-            image_data, profile, layer_name = self.get_current_image()
-            
-            # Determine if we're dealing with a vector layer
-            is_vector = False
-            if layer_name and layer_name in self.layers:
-                is_vector = self.layers[layer_name].get('type') == 'vector'
-            
-            # Prepare format options
-            if is_vector:
-                formats = "Shapefile (*.shp);;GeoJSON (*.geojson);;CSV (*.csv)"
-                default_ext = ".shp"
-            else:
-                formats = "GeoTIFF (*.tif);;JPEG (*.jpg);;PNG (*.png);;ASCII Grid (*.asc)"
-                default_ext = ".tif" if image_data is not None else ".shp"
-            
-            # Set default filename
-            default_name = ""
-            if layer_name:
-                default_name = f"{layer_name}{default_ext}"
-            
-            # Get save path from user
-            file_name, selected_format = QFileDialog.getSaveFileName(
-                self, 
-                "Save Layer" if layer_name else "Save Image",
-                default_name,
-                formats
-            )
-            
-            if not file_name:
-                return  # User cancelled
-            
-            # Handle the save operation
-            if is_vector:
-                self._save_vector_data(file_name, selected_format, layer_name)
-            else:
-                self._save_raster_data(file_name, selected_format, image_data, profile)
-                
-            QMessageBox.information(self, "Success", f"Saved successfully to:\n{file_name}")
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save:\n{str(e)}")
-            print(f"Save error: {traceback.format_exc()}")
-    def _save_vector_data(self, file_path, file_format, layer_name):
-        """Save vector data to file"""
-        gdf = self.layers[layer_name].get('gdf')
-        if gdf is None:
-            raise ValueError("No vector data found in layer")
-        
-        if "Shapefile" in file_format:
-            gdf.to_file(file_path, driver='ESRI Shapefile')
-            # Save .prj file if CRS exists
-            if gdf.crs:
-                with open(os.path.splitext(file_path)[0] + '.prj', 'w') as f:
-                    f.write(gdf.crs.to_wkt())
-        elif "GeoJSON" in file_format:
-            gdf.to_file(file_path, driver='GeoJSON')
-        elif "CSV" in file_format:
-            # Save attributes without geometry
-            gdf.drop(columns='geometry').to_csv(file_path, index=False)
-        else:
-            raise ValueError("Unsupported vector format")
 
-    def _save_raster_data(self, file_path, file_format, image_data, profile):
-        """Save raster data to file"""
-        if image_data is None:
-            raise ValueError("No image data to save")
-        
-        if "GeoTIFF" in file_format:
-            with rasterio.open(file_path, 'w', **profile) as dst:
-                dst.write(image_data)
-        elif "JPEG" in file_format or "PNG" in file_format:
-            # Convert to 8-bit for image formats
-            normalized = self._normalize_to_8bit(image_data)
-            if len(normalized.shape) == 3:  # Multi-band
-                normalized = np.moveaxis(normalized, 0, -1)  # Change to HWC format
-            if "JPEG" in file_format:
-                cv2.imwrite(file_path, normalized, [cv2.IMWRITE_JPEG_QUALITY, 90])
-            else:
-                cv2.imwrite(file_path, normalized)
-        elif "ASCII" in file_format:
-            self._save_ascii_grid(file_path, image_data, profile)
-        else:
-            raise ValueError("Unsupported raster format")
 
-    def _normalize_to_8bit(self, image_data):
-        """Normalize image data to 0-255 range"""
-        if len(image_data.shape) == 2:  # Single band
-            return cv2.normalize(image_data, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-        else:  # Multi-band
-            return np.stack([
-                cv2.normalize(band, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-                for band in image_data
-            ])
 
-    def _save_ascii_grid(self, file_path, image_data, profile):
-        """Save single-band raster as ASCII grid"""
-        if len(image_data.shape) != 2:
-            raise ValueError("ASCII Grid only supports single-band data")
-        
-        transform = profile.get('transform')
-        if transform is None:
-            raise ValueError("Missing geotransform information")
-        
-        with open(file_path, 'w') as f:
-            # Write header
-            f.write(f"ncols {image_data.shape[1]}\n")
-            f.write(f"nrows {image_data.shape[0]}\n")
-            f.write(f"xllcorner {transform.c}\n")
-            f.write(f"yllcorner {transform.f - transform.e * image_data.shape[0]}\n")
-            f.write(f"cellsize {transform.a}\n")
-            f.write("NODATA_value -9999\n")
-            
-            # Write data
-            np.savetxt(f, image_data, fmt='%.4f')
 
-    def get_current_image(self):
-        """Get either the selected layer image/vector or the currently displayed image"""
-        try:
-            # Check for selected layer first
-            selected_items = self.layer_list.selectedItems()
-            if selected_items:
-                layer_name = selected_items[0].text()
-                layer_data = self.layers.get(layer_name, {})
-                
-                # Handle vector layers (shapefiles)
-                if layer_data.get('type') == 'vector':
-                    return None, None, layer_name  # Return just layer name for vectors
-                
-                # Handle raster layers (images)
-                if 'image' in layer_data:
-                    return layer_data['image'], layer_data.get('profile', {}), layer_name
-                
-                return None, None, layer_name
-            
-            # Fall back to active image (mouse-selected or last displayed)
-            if hasattr(self, 'active_image'):
-                profile = getattr(self, 'profile', {})
-                return self.active_image, profile, None
-            
-            # Check for regular displayed image
-            if hasattr(self, 'image'):
-                profile = getattr(self, 'profile', {})
-                return self.image, profile, None
-            
-            return None, None, None
-            
-        except Exception as e:
-            print(f"Error in get_current_image: {str(e)}")
-            return None, None, None
     
-    def save_geotiff(self, file_name, image_data=None, profile=None):
-        """Save image as GeoTIFF with proper NaN handling and compression"""
-        if image_data is None:
-            image_data = self.image
-        if profile is None:
-            profile = getattr(self, 'profile', {}).copy()
-        
-        try:
-            # Make a copy of the image data to avoid modifying original
-            image_data = np.copy(image_data)
-            profile = profile.copy()
-            
-            # Determine appropriate data type and nodata value
-            if np.issubdtype(image_data.dtype, np.floating):
-                output_dtype = 'float32'
-                nodata = np.nan
-            else:
-                output_dtype = 'int16'
-                nodata = -32768  # Minimum Int16 value
-            
-            # Handle NaN values
-            if np.any(np.isnan(image_data)):
-                if output_dtype.startswith('int'):
-                    QMessageBox.information(
-                        self,
-                        "Data Conversion",
-                        "NaN values will be converted to {} for integer format".format(nodata)
-                    )
-                    image_data = np.nan_to_num(image_data, nan=nodata)
-                else:
-                    image_data = np.where(np.isnan(image_data), nodata, image_data)
-            
-            # Update profile with compression and other settings
-            profile.update({
-                'dtype': output_dtype,
-                'nodata': nodata,
-                'driver': 'GTiff',
-                'compress': 'lzw',
-                'tiled': True,
-                'blockxsize': 256,
-                'blockysize': 256
-            })
-            
-            # Handle multi-band vs single-band
-            if image_data.ndim == 3 and image_data.shape[0] > 1:
-                profile['count'] = image_data.shape[0]
-            
-            # Save with updated profile
-            with rasterio.open(file_name, 'w', **profile) as dst:
-                if image_data.ndim == 3:
-                    dst.write(image_data)
-                else:
-                    dst.write(image_data, 1)
-            
-            QMessageBox.information(self, "Success", f"Image saved as GeoTIFF: {file_name}")
-        
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save GeoTIFF: {str(e)}")
     
-    def save_shapefile(self, file_name, image_data=None, profile=None):
-        """Save image as ESRI Shapefile"""
-        if image_data is None:
-            image_data = self.get_current_image()[0]
-            if image_data is None:
-                QMessageBox.warning(self, "Warning", "No image available to save")
-                return
-        
-        try:
-            # For shapefiles, we typically want a single band classification
-            if image_data.ndim == 3:
-                QMessageBox.warning(self, "Warning", "Using first band for shapefile conversion")
-                image_data = image_data[0]
-            
-            # Convert raster to polygons
-            gdf = self.raster_to_polygons(image_data)
-            
-            # Save with CRS if available
-            if profile and 'crs' in profile:
-                gdf.crs = profile['crs']
-            
-            gdf.to_file(file_name)
-            QMessageBox.information(self, "Success", f"Image saved as Shapefile: {file_name}")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save Shapefile: {str(e)}")
-
-    def save_ascii_grid(self, file_name, image_data=None, profile=None):
-        """Save image as ASCII Grid"""
-        if image_data is None:
-            image_data = self.get_current_image()[0]
-            if image_data is None:
-                QMessageBox.warning(self, "Warning", "No image available to save")
-                return
-        
-        try:
-            # Handle multi-band images
-            if image_data.ndim == 3:
-                QMessageBox.warning(self, "Warning", "Using first band for ASCII Grid")
-                image_data = image_data[0]
-            
-            # Replace NaN with -9999 (standard ASCII Grid nodata value)
-            image_data = np.nan_to_num(image_data, nan=-9999)
-            
-            # Get spatial reference from profile or use defaults
-            if profile and 'transform' in profile:
-                transform = profile['transform']
-                xll = transform.c
-                yll = transform.f
-                cellsize = transform.a
-            else:
-                xll = yll = 0
-                cellsize = 1
-            
-            # Write ASCII Grid header
-            header = f"""NCOLS {image_data.shape[1]}
-    NROWS {image_data.shape[0]}
-    XLLCORNER {xll}
-    YLLCORNER {yll}
-    CELLSIZE {cellsize}
-    NODATA_VALUE -9999
-    """
-            
-            # Write data
-            with open(file_name, 'w') as f:
-                f.write(header)
-                np.savetxt(f, image_data, fmt='%.4f')
-            
-            QMessageBox.information(self, "Success", f"Image saved as ASCII Grid: {file_name}")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save ASCII Grid: {str(e)}")
-
-    def save_jpeg(self, file_name, image_data=None, profile=None):
-        """Save image as JPEG"""
-        if image_data is None:
-            image_data = self.get_current_image()[0]
-            if image_data is None:
-                QMessageBox.warning(self, "Warning", "No image available to save")
-                return
-        
-        try:
-            # Handle different image types
-            if image_data.ndim == 3:
-                # RGB image
-                if image_data.shape[0] == 3:  # RGB
-                    img_array = image_data.transpose(1, 2, 0)
-                elif image_data.shape[0] == 4:  # RGBA
-                    img_array = image_data[:3].transpose(1, 2, 0)
-                else:  # Multi-band, use first 3 bands
-                    img_array = image_data[:3].transpose(1, 2, 0)
-            else:
-                # Single band - convert to grayscale
-                img_array = np.stack((image_data,)*3, axis=-1)
-            
-            # Normalize to 0-255 range
-            if img_array.dtype == np.float32 or img_array.dtype == np.float64:
-                img_array = (img_array * 255).astype(np.uint8)
-            elif img_array.dtype == np.uint16:
-                img_array = (img_array / 256).astype(np.uint8)
-            
-            # Convert to PIL Image and save
-            img = Image.fromarray(img_array)
-            img.save(file_name, "JPEG", quality=95)
-            
-            QMessageBox.information(self, "Success", f"Image saved as JPEG: {file_name}")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save JPEG: {str(e)}")
-
-    def save_png(self, file_name, image_data=None, profile=None):
-        """Save image as PNG"""
-        if image_data is None:
-            image_data = self.get_current_image()[0]
-            if image_data is None:
-                QMessageBox.warning(self, "Warning", "No image available to save")
-                return
-        
-        try:
-            # Handle different image types
-            if image_data.ndim == 3:
-                # RGB or RGBA image
-                if image_data.shape[0] == 3:  # RGB
-                    img_array = image_data.transpose(1, 2, 0)
-                    mode = 'RGB'
-                elif image_data.shape[0] == 4:  # RGBA
-                    img_array = image_data.transpose(1, 2, 0)
-                    mode = 'RGBA'
-                else:  # Multi-band, use first 3 bands
-                    img_array = image_data[:3].transpose(1, 2, 0)
-                    mode = 'RGB'
-            else:
-                # Single band
-                img_array = image_data
-                mode = 'L'  # Grayscale
-            
-            # Normalize data
-            if img_array.dtype == np.float32 or img_array.dtype == np.float64:
-                img_array = (img_array * 255).astype(np.uint8)
-            elif img_array.dtype == np.uint16:
-                img_array = (img_array / 256).astype(np.uint8)
-            
-            # Convert to PIL Image and save
-            img = Image.fromarray(img_array, mode)
-            img.save(file_name, "PNG", compress_level=6)
-            
-            QMessageBox.information(self, "Success", f"Image saved as PNG: {file_name}")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save PNG: {str(e)}")
-
-    def raster_to_polygons(self, raster_data):
-        """Convert raster data to polygons for shapefile export"""
-        try:
-            import geopandas as gpd
-            from shapely.geometry import shape
-            import rasterio.features
-            
-            # Create mask from valid data (non-NaN/non-zero)
-            mask = ~np.isnan(raster_data) & (raster_data != 0)
-            
-            # Extract shapes
-            shapes = rasterio.features.shapes(raster_data.astype('float32'), 
-                                            mask=mask,
-                                            transform=self.profile.get('transform'))
-            
-            # Convert to GeoDataFrame
-            polygons = []
-            values = []
-            for geom, val in shapes:
-                polygons.append(shape(geom))
-                values.append(val)
-            
-            return gpd.GeoDataFrame({'value': values, 'geometry': polygons})
-        
-        except ImportError as e:
-            QMessageBox.critical(self, "Error", f"Required packages not found: {str(e)}")
-            return None
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to convert raster to polygons: {str(e)}")
-            return None
 
 
  ##################################################################
     
+    UNDO_LIMIT = 10
+
+    def _current_layer_name(self):
+        name = getattr(self, 'current_layer', None)
+        if name:
+            return name
+        item = self.layer_list.currentItem() if hasattr(self, 'layer_list') else None
+        return item.text() if item else "Image"
+
+    def _push_undo(self):
+        """Save the active image as (image, layer_name) and invalidate the redo history."""
+        image = getattr(self, 'image', None)
+        if image is None:
+            return
+        self.undo_stack.append((np.array(image, copy=True), self._current_layer_name()))
+        del self.undo_stack[:-self.UNDO_LIMIT]
+        self.redo_stack.clear()
+
+    def _restore_state(self, image, name):
+        self.image = image
+        layer = self.layers.get(name)
+        if isinstance(layer, dict):
+            layer['image'] = image
+        else:
+            self.layers[name] = {'image': image, 'profile': getattr(self, 'profile', None) or {}, 'file_name': name}
+        self.display_raster_layer(self.layers[name], name)
+
     def undo(self):
-        if self.undo_stack:
-            self.redo_stack.append(self.image.copy())
-            self.image = self.undo_stack.pop()  # تحديث الصورة النشطة
-            self.display_raster_layer(self.image)
+        if not self.undo_stack:
+            return
+        image, name = self.undo_stack.pop()
+        if getattr(self, 'image', None) is not None:
+            self.redo_stack.append((np.array(self.image, copy=True), self._current_layer_name()))
+        self._restore_state(image, name)
 
     def redo(self):
-        if self.redo_stack:
-            self.undo_stack.append(self.image.copy())
-            self.image = self.redo_stack.pop()  # تحديث الصورة النشطة
-            self.display_raster_layer(self.image)
+        if not self.redo_stack:
+            return
+        image, name = self.redo_stack.pop()
+        if getattr(self, 'image', None) is not None:
+            self.undo_stack.append((np.array(self.image, copy=True), self._current_layer_name()))
+        self._restore_state(image, name)
 
 
     def resample_image(self):
@@ -3663,8 +3146,8 @@ class SatelliteImageApp(QMainWindow):
     def on_resample_finished(self, result):
         try:
             self.resampled_image, self.new_profile, file_name = result
+            self._push_undo()
             self.display_raster_layer(self.resampled_image, file_name)  # Pass file_name to display_image
-            self.undo_stack.append(self.image.copy())
             self.progress_bar.setVisible(False)  # Hide progress bar after completion
 
             # Ask user for confirmation to save the resampled image
@@ -3705,8 +3188,8 @@ class SatelliteImageApp(QMainWindow):
     def on_contrast_enhance_finished(self, result):
         try:
             self.contrast_enhanced_image, file_name = result
+            self._push_undo()
             self.display_raster_layer(self.contrast_enhanced_image, file_name)  # Pass file_name to display_image
-            self.undo_stack.append(self.image.copy())
             self.progress_bar.setVisible(False)  # Hide progress bar after completion
 
             # Ask user for confirmation to save the contrast-enhanced image
@@ -3745,8 +3228,8 @@ class SatelliteImageApp(QMainWindow):
     def on_smooth_finished(self, result):
         try:
             self.smoothed_image, file_name = result
+            self._push_undo()
             self.display_raster_layer(self.smoothed_image, file_name)  # Pass file_name to display_image
-            self.undo_stack.append(self.image.copy())
             self.progress_bar.setVisible(False)  # Hide progress bar after completion
 
             # Ask user for confirmation to save the smoothed image
@@ -3801,8 +3284,8 @@ class SatelliteImageApp(QMainWindow):
     def on_sharpen_finished(self, result):
         try:
             self.sharpened_image, file_name = result
+            self._push_undo()
             self.display_raster_layer(self.sharpened_image, file_name)  # Pass file_name to display_image
-            self.undo_stack.append(self.image.copy())
             self.progress_bar.setVisible(False)  # Hide progress bar after completion
 
             # Ask user for confirmation to save the sharpened image
@@ -3843,80 +3326,37 @@ class SatelliteImageApp(QMainWindow):
         return layer_data[0], self.layers[layer_name]['profile']
     
  ##################################################### DEM operations
+    def _prepare_dem(self, dem_data, profile):
+        """float32 DEM with no-data sentinels as NaN and voids of up to 3 pixels filled (vectorised, no elevation limits)."""
+        dem = terrain.clean_dem(np.squeeze(dem_data), (profile or {}).get('nodata'))
+        if np.isnan(dem).all():
+            raise ValueError("The DEM has no valid elevation cells")
+        return terrain.fill_small_voids(dem, 3)
+
     def preprocess_dem(self, dem_data, profile):
-        """Enhanced DEM cleaning and preparation"""
+        """Clean the DEM and optionally smooth it. Returns (dem, new_profile) or (None, None) after showing the reason."""
         try:
-            # Step 1: Basic validation
-            if np.all(dem_data == dem_data[0,0]):
-                QMessageBox.warning(self, "Warning", "DEM appears completely flat")
+            dem = self._prepare_dem(dem_data, profile)
+            if np.nanmax(dem) == np.nanmin(dem):
+                QMessageBox.warning(self, "Warning", "The DEM is completely flat")
                 return None, None
-
-            # Step 2: Handle NoData values
-            nodata_values = [
-                profile.get('nodata'),  # القيمة الأصلية من الملف التعريفي
-                -9999,                  # القيمة الأكثر شيوعًا في ArcGIS
-                -32767,                 # تستخدم في بعض DEMs القديمة
-                -3.4028235e+38,         # تستخدم في البيانات العائمة (Float) في ArcGIS
-                -2147483648,            # تستخدم للبيانات الصحيحة (Integer)
-                65535,                  # تستخدم في بيانات 16-bit غير الموقعة
-                -32768                  # تستخدم في بيانات 16-bit الموقعة
-            ]
-
-            # إزالة أي قيم None (إذا لم يكن 'nodata' موجودًا في profile)
-            nodata_values = [x for x in nodata_values if x is not None]
-
-            # تنظيف البيانات: استبدال أي من قيم NoData بـ NaN
-            dem_clean = np.where(
-                np.isin(dem_data, nodata_values) | (dem_data < -1000) | (dem_data > 9000),
-                np.nan,
-                dem_data
-            )
-            # # Step 2: Handle NoData values
-            # nodata = profile.get('nodata', -9999, -32767)
-            # dem_clean = np.where((dem_data == nodata) | (dem_data < -1000) | (dem_data > 9000), np.nan, dem_data)
-
-            # Step 3: Fill small voids (3x3 window)
-            from scipy.ndimage import generic_filter
-            def fill_nan(window):
-                valid_vals = window[~np.isnan(window)]
-                return valid_vals.mean() if len(valid_vals) > 4 else window[4]
-            dem_filled = generic_filter(dem_clean, fill_nan, size=3)
-
-            # Step 4: Ask user about Gentle smoothing
-            from scipy.ndimage import gaussian_filter
-            # Ask user about smoothing
+            smoothing_applied = False
             reply = QMessageBox.question(
-                self,
-                'DEM Smoothing',
-                'Would you like to apply gentle smoothing using gaussian filter with sigma=0.75 to the DEM?\n\n'
-                'Smoothing can reduce noise but may lose some detail.',
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes
-            )
-
+                self, 'DEM Smoothing',
+                'Apply gentle Gaussian smoothing (sigma = 0.75 pixel) to the DEM?\n\n'
+                'Smoothing reduces noise but removes some detail.',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if reply == QMessageBox.Yes:
-                # Step 4: Gentle smoothing (only if user chooses)
-                from scipy.ndimage import gaussian_filter
-                dem_smoothed = gaussian_filter(dem_filled, sigma=0.75)
+                dem = terrain.smooth_nan(dem, 0.75)
                 smoothing_applied = True
-            else:
-                dem_smoothed = dem_filled
-                smoothing_applied = False
-
-            # Update profile with processing metadata
-            new_profile = profile.copy()
-            new_profile.update({
-                'nodata': np.nan,
-                'processed': True,
-                'original_range': (float(np.nanmin(dem_data)), float(np.nanmax(dem_data))),
-                'processed_range': (float(np.nanmin(dem_smoothed)), float(np.nanmax(dem_smoothed)))
-            })
-
-            return dem_smoothed, new_profile
-
-        except Exception as e:
-            QMessageBox.critical(self, "Preprocessing Error", f"DEM cleaning failed: {str(e)}")
+            new_profile = dict(profile)
+            new_profile.update({'nodata': float('nan'), 'dtype': 'float32', 'processed': True,
+                                'smoothing_applied': smoothing_applied})
+            return dem, new_profile
+        except Exception as exc:
+            QMessageBox.critical(self, "Preprocessing Error", f"DEM cleaning failed: {exc}")
             return None, None
+
 
     def calculate_hillshade(self):
         """Calculate hillshade with proper visualization"""
@@ -3926,20 +3366,6 @@ class SatelliteImageApp(QMainWindow):
                 return
             
             # Check if CRS is projected
-            if not profile.get('crs', {}).is_projected:
-                reply = QMessageBox.warning(
-                    self,
-                    "Coordinate System Warning",
-                    "Your DEM is not in a projected coordinate system (e.g., UTM).\n\n"
-                    "Hillshade lighting effects will be distorted in degrees-based systems.\n"
-                    "For accurate results, reproject to UTM first.\n\n"
-                    "Continue anyway?",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No
-                )
-                if reply == QMessageBox.No:
-                    return
-
             # Preprocess DEM
             dem_processed, new_profile = self.preprocess_dem(dem_data, profile)
             if dem_processed is None:
@@ -3962,7 +3388,8 @@ class SatelliteImageApp(QMainWindow):
                 new_profile['transform'], 
                 azimuth, 
                 altitude, 
-                z_factor
+                z_factor,
+                crs=new_profile.get('crs')
             )
             
             # Create layer with visualization preferences
@@ -4015,26 +3442,12 @@ class SatelliteImageApp(QMainWindow):
     def calculate_slope(self):
         """Calculate slope with proper preprocessing, CRS check, and save options"""
         try:
-            # Get DEM data (already preprocessed by validate_dem_layer)
-            dem_processed, new_profile = self.validate_dem_layer()
-            if dem_processed is None:
+            dem_raw, new_profile = self.validate_dem_layer()
+            if dem_raw is None:
                 return
+            dem_processed = self._prepare_dem(dem_raw, new_profile)
 
             # Check if CRS is projected
-            if not new_profile.get('crs', {}).is_projected:
-                reply = QMessageBox.warning(
-                    self,
-                    "Coordinate System Warning",
-                    "Your DEM is not in a projected coordinate system (e.g., UTM).\n\n"
-                    "Slope calculations require projected coordinates (in meters) for accurate results.\n"
-                    "Degrees-based systems (like WGS84) will produce incorrect slopes.\n\n"
-                    "Do you want to continue anyway?",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No
-                )
-                if reply == QMessageBox.No:
-                    return
-
             # Create parameter selection dialog
             dialog = QDialog(self)
             dialog.setWindowTitle("Slope Parameters")
@@ -4044,7 +3457,7 @@ class SatelliteImageApp(QMainWindow):
             fig = Figure(figsize=(7, 6))
             canvas = FigureCanvas(fig)
             ax = fig.add_subplot(111)
-            preview = ax.imshow(dem_processed, cmap='terrain')
+            preview, _spec = georef.draw_raster(ax, dem_processed, new_profile, cmap='terrain')
             fig.colorbar(preview, ax=ax, label='Elevation (m)')
             ax.set_title("Processed DEM Preview")
             layout.addWidget(canvas)
@@ -4085,7 +3498,8 @@ class SatelliteImageApp(QMainWindow):
             result = self.image_processor.calculate_slope(
                 dem_processed,
                 new_profile['transform'],
-                output_type
+                output_type,
+                crs=new_profile.get('crs')
             )
             
             # Handle output
@@ -4186,15 +3600,17 @@ class SatelliteImageApp(QMainWindow):
                 'nodata': None
             })
             
-            if output_type == 'both' or output_type == 'degrees':
-                degrees_path = f"{base_path}_degrees.tif"
-                with rasterio.open(degrees_path, 'w', **save_profile) as dst:
-                    dst.write(degrees_data, 1)
-                
-            if output_type == 'both' or (output_type == 'percent_rise' and percent_data is not None):
-                percent_path = f"{base_path}_percent.tif"
-                with rasterio.open(percent_path, 'w', **save_profile) as dst:
-                    dst.write(percent_data if percent_data is not None else degrees_data, 1)
+            save_profile.update(dtype='float32', nodata=float('nan'))
+            to_write = []
+            if output_type == 'both':
+                to_write = [(f"{base_path}_degrees.tif", degrees_data), (f"{base_path}_percent.tif", percent_data)]
+            elif output_type == 'degrees':
+                to_write = [(f"{base_path}_degrees.tif", degrees_data)]
+            else:      # percent_rise: the single result arrives in the first argument
+                to_write = [(f"{base_path}_percent.tif", percent_data if percent_data is not None else degrees_data)]
+            for path, arr in to_write:
+                with rasterio.open(path, 'w', **save_profile) as dst:
+                    dst.write(np.asarray(arr, dtype=np.float32), 1)
                 
             QMessageBox.information(self, "Success", "Slope results saved successfully")
             
@@ -4209,20 +3625,6 @@ class SatelliteImageApp(QMainWindow):
                 return
             
             # Check if CRS is projected
-            if not profile.get('crs', {}).is_projected:
-                reply = QMessageBox.warning(
-                    self,
-                    "Coordinate System Warning",
-                    "Your DEM is not in a projected coordinate system (e.g., UTM).\n\n"
-                    "Aspect directions may be inaccurate in degrees-based systems.\n"
-                    "For accurate results, reproject to UTM first.\n\n"
-                    "Continue anyway?",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No
-                )
-                if reply == QMessageBox.No:
-                    return
-
             # Preprocess DEM
             dem_processed, new_profile = self.preprocess_dem(dem_data, profile)
             if dem_processed is None:
@@ -4231,7 +3633,8 @@ class SatelliteImageApp(QMainWindow):
             # Calculate aspect (0-360 degrees)
             aspect = self.image_processor.calculate_aspect(
                 dem_processed, 
-                new_profile['transform']
+                new_profile['transform'],
+                crs=new_profile.get('crs')
             )
             
             # Create layer with visualization preferences
@@ -4246,7 +3649,7 @@ class SatelliteImageApp(QMainWindow):
             }
             
             # Add to layer list with compass icon
-            item = QListWidgetItem(QIcon("D:\\Python_Codes\\icons\\compass.png"), layer_name)
+            item = QListWidgetItem(QIcon(resource_path("compass.png")), layer_name)
             self.layer_list.addItem(item)
             
             # Display using parameters from layer metadata
@@ -4312,212 +3715,125 @@ class SatelliteImageApp(QMainWindow):
             QMessageBox.critical(self, "Save Error", 
                             f"Failed to save {data_type} results: {str(e)}")
             
+    def _dem_for_hydrology(self):
+        """(clean DEM, profile) of the selected single-band layer, or (None, None) after showing the reason."""
+        dem_raw, profile = self.validate_dem_layer()
+        if dem_raw is None:
+            return None, None
+        if not isinstance(profile, Mapping) or profile.get('transform') is None:
+            name = self.layer_list.currentItem().text() if self.layer_list.currentItem() else "?"
+            QMessageBox.warning(self, "Georeferencing missing",
+                                f"The selected layer '{name}' has no geotransform (it is not georeferenced), so cell sizes "
+                                "cannot be derived.\nSelect the original DEM GeoTIFF layer in the layer list and try again.")
+            return None, None
+        return self._prepare_dem(dem_raw, profile), profile
+
+    @staticmethod
+    def _flow_job(dem, transform, crs):
+        """Depression filling -> D8 direction -> accumulation. Returns a dict (runs in a worker thread)."""
+        def job(progress):
+            progress(5, "Filling depressions (Priority-Flood)...")
+            filled = terrain.fill_depressions(dem)
+            progress(45, "Flow direction (D8)...")
+            xres, yres = terrain.cell_size(transform, dem.shape, crs)
+            flow_dir = terrain.flow_direction(filled, xres, yres)
+            progress(75, "Flow accumulation...")
+            return {'filled': filled, 'flow_dir': flow_dir, 'acc': terrain.flow_accumulation(flow_dir)}
+        return job
+
     def calculate_flow_accumulation(self):
-        """Calculate flow accumulation from DEM"""
+        """Flow accumulation (number of upstream cells) from the selected DEM layer."""
         try:
-            # Get DEM data
-            dem_data, profile = self.validate_dem_layer()
-            if dem_data is None:
+            dem, profile = self._dem_for_hydrology()
+            if dem is None:
                 return
-
-            # Preprocess DEM (handle NoData values)
-            dem_processed, new_profile = self.preprocess_dem(dem_data, profile)
-            if dem_processed is None:
-                return
-
-            # Ensure we have a projected CRS
-            if not profile.get('crs', {}).is_projected:
-                QMessageBox.warning(self, "Warning", 
-                                "Flow accumulation requires projected CRS (e.g., UTM)")
-                return
-
-            # Fill sinks and calculate flow
-            filled_dem = self.image_processor.fill_sinks(dem_processed[0] if dem_processed.ndim == 3 else dem_processed)
-            flow_dir = self.image_processor.d8_flow_direction(filled_dem, new_profile['transform'])
-            accumulation = self.image_processor.calculate_flow_accumulation(flow_dir)
-
-            # Convert to logarithmic scale
-            log_acc = np.log1p(accumulation)
-            log_acc[accumulation == 0] = 0
-
-            # Create layer
-            layer_name = "Flow_Accumulation"
-            self.layers[layer_name] = {
-                'image': log_acc[np.newaxis, ...],
-                'profile': new_profile,
-                'file_name': layer_name,
-                'cmap': 'Blues',
-                'vmin': 0,
-                'vmax': np.percentile(log_acc[~np.isinf(log_acc)], 99)  # Handle inf values
-            }
-
-            # Update UI
-            self.layer_list.addItem(QListWidgetItem(layer_name))
-            self.display_raster_layer(log_acc, layer_name)
-
-            # Show statistics
-            stats = (f"Flow Accumulation Statistics:\n"
-                    f"Max Contributing Cells: {np.nanmax(accumulation):.0f}\n"
-                    f"Mean: {np.nanmean(accumulation):.1f}\n"
-                    f"Suggested Stream Threshold: {np.percentile(accumulation, 95):.0f} cells")
-            
-            msg = QMessageBox()
-            msg.setWindowTitle("Flow Analysis Complete")
-            msg.setText(stats)
-            msg.setInformativeText("Save results?")
-            msg.setStandardButtons(QMessageBox.Save | QMessageBox.Discard)
-            
-            if msg.exec_() == QMessageBox.Save:
-                self.save_raster_results(log_acc, new_profile, "flow_accumulation", layer_name)
-
-        except Exception as e:
-            QMessageBox.critical(self, "Error", 
-                f"Flow accumulation failed:\n{str(e)}\n\n"
-                "Common issues:\n"
-                "1. DEM contains large flat areas\n"
-                "2. NoData values not properly handled\n"
-                "3. CRS not projected (requires meters)\n"
-                "4. DEM resolution too coarse")
-            
-    def calculate_stream_network(self):
-        """Robust stream network extraction with proper progress handling"""
-        try:
-            # Step 1: Validate inputs with proper error handling
-            dem_data, profile = self.validate_dem_layer()
-            if dem_data is None:
-                return
-
-            # Safe dictionary access
-            if not isinstance(profile, dict):
-                raise ValueError("Invalid raster profile - expected dictionary")
-
-            # Enhanced CRS check
-            crs = profile.get('crs')
-            if crs is None:
-                raise ValueError("Missing CRS in raster profile")
-            if not hasattr(crs, 'is_projected'):
-                raise ValueError("CRS object missing projection information")
-            if not crs.is_projected:
-                raise ValueError("Requires projected CRS (e.g., UTM)")
-
-            # Step 2: DEM validation
-            validation_errors = self.image_processor.validate_dem(dem_data, profile)
-            if validation_errors:
-                raise ValueError("\n".join(validation_errors))
-            # Validate inputs
-            dem_data, profile = self.validate_dem_layer()
-            if dem_data is None:
-                return
-
-            # Proper CRS check (using dict.get() safely)
-            if not isinstance(profile, dict) or not profile.get('crs'):
-                QMessageBox.critical(self, "CRS Error", 
-                                "Missing CRS information in raster profile")
-                return
-                
-            crs = profile['crs']
-            if not hasattr(crs, 'is_projected') or not crs.is_projected:
-                QMessageBox.critical(self, "CRS Error", 
-                                "Stream extraction requires projected CRS (e.g., UTM)")
-                return
-            # Initialize progress dialog
-            progress = QProgressDialog("Preparing DEM...", "Cancel", 0, 4, self)
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setAutoClose(True)
-            progress.show()
-            
-            # Step 1: Validate inputs
-            if progress.wasCanceled():
-                return
-            progress.setValue(0)
-            dem_data, profile = self.validate_dem_layer()
-            if dem_data is None:
-                return
-
-            # Check for projected CRS
-            if not profile.get('crs', {}).is_projected:
-                QMessageBox.critical(self, "CRS Error", 
-                                "Stream extraction requires projected CRS (e.g., UTM)")
-                return
-
-            # Step 2: Process DEM
-            progress.setLabelText("Filling sinks...")
-            QApplication.processEvents()  # Update UI
-            filled_dem = self.image_processor.fill_sinks(dem_data)
-            progress.setValue(1)
-            
-            progress.setLabelText("Calculating flow direction...")
-            QApplication.processEvents()
-            flow_dir = self.image_processor.d8_flow_direction(filled_dem, profile['transform'])
-            progress.setValue(2)
-            
-            progress.setLabelText("Calculating flow accumulation...")
-            QApplication.processEvents()
-            accumulation = self.image_processor.calculate_flow_accumulation(flow_dir)
-            progress.setValue(3)
-
-            # Check for flat areas
-            flat_cells = np.sum(flow_dir == 0) / flow_dir.size * 100
-            if flat_cells > 30:  # More than 30% flat
-                reply = QMessageBox.question(
-                    self, "Flat Areas Detected",
-                    f"{flat_cells:.1f}% flat areas found. Results may be unreliable.\nContinue?",
-                    QMessageBox.Yes | QMessageBox.No
-                )
-                if reply == QMessageBox.No:
+            if dem.size > 4_000_000:
+                if QMessageBox.question(self, "Large DEM", f"{dem.size:,} cells: depression filling may take a minute. Continue?",
+                                        QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
                     return
+            job = self._flow_job(dem, profile['transform'], profile.get('crs'))
+            self._start_validation_job(job, lambda res: self._on_flow_done(res, profile), "Flow accumulation")
+        except Exception as e:
+            self.show_error(f"Flow accumulation failed: {e}")
 
-            # Get parameters
-            params = self._get_stream_parameters(accumulation)
+    def _on_flow_done(self, res, profile):
+        self._val_progress.close()
+        acc = res['acc']
+        log_acc = np.log1p(acc).astype(np.float32)
+        new_profile = dict(profile)
+        new_profile.update(dtype='float32', nodata=float('nan'), count=1)
+        layer_name = "Flow_Accumulation"
+        self.layers[layer_name] = {
+            'image': log_acc[np.newaxis, ...], 'profile': new_profile, 'file_name': layer_name,
+            'cmap': 'Blues', 'vmin': 0, 'vmax': float(np.percentile(log_acc[acc > 0], 99)) if (acc > 0).any() else 1.0,
+        }
+        self.layer_list.addItem(QListWidgetItem(layer_name))
+        self.display_raster_layer(log_acc[np.newaxis, ...], layer_name)
+        pool = acc[acc > 1]
+        stats = (f"Flow accumulation (D8, Priority-Flood filled)\n"
+                 f"Max contributing cells: {int(acc.max()):,}\n"
+                 f"Cells draining out of the DEM (pits/outlets): {int((res['flow_dir'] == 0).sum()):,}\n"
+                 f"Suggested stream threshold (95th percentile of flowing cells): "
+                 f"{int(np.percentile(pool, 95)) if pool.size else 0:,} cells")
+        if QMessageBox.question(self, "Flow analysis complete", stats + "\n\nSave the log-scaled raster?",
+                                QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+            self.save_raster_results(log_acc, new_profile, "flow_accumulation", layer_name)
+
+    def calculate_stream_network(self):
+        """Stream network: flow accumulation -> threshold -> Strahler/Shreve order -> raster + line layers."""
+        try:
+            dem, profile = self._dem_for_hydrology()
+            if dem is None:
+                return
+            job = self._flow_job(dem, profile['transform'], profile.get('crs'))
+            self._start_validation_job(job, lambda res: self._on_stream_flow_done(res, profile), "Stream network: flow")
+        except Exception as e:
+            self.show_error(f"Stream extraction failed: {e}")
+
+    def _on_stream_flow_done(self, res, profile):
+        self._val_progress.close()
+        try:
+            flat = float((res['flow_dir'] == 0).sum()) / res['flow_dir'].size * 100.0
+            if flat > 30 and QMessageBox.question(
+                    self, "Many outlets", f"{flat:.1f}% of cells have no downstream neighbour. Results may be unreliable. Continue?",
+                    QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
+                return
+            params = self._get_stream_parameters(res['acc'])
             if not params:
                 return
+            transform = profile['transform']
 
-            # Step 3: Extract streams
-            progress.setLabelText("Extracting streams...")
-            QApplication.processEvents()
-            streams = self.image_processor.extract_streams(
-                accumulation, 
-                params['method'], 
-                params['threshold']
-            )
-            progress.setValue(4)
-            
-            if np.sum(streams) == 0:
-                raise ValueError("No streams found - threshold too high")
-
-            # Step 4: Calculate stream order
-            progress.setLabelText("Calculating stream order...")
-            QApplication.processEvents()
-            if params['order_method'] == "Strahler":
-                stream_order = self.image_processor.strahler_order(flow_dir, streams)
-            elif params['order_method'] == "Shreve":
-                stream_order = self.image_processor.shreve_order(flow_dir, streams)
-            else:  # Horton
-                stream_order = self.image_processor.horton_order(flow_dir, streams)
-            
-            # Create outputs
-            progress.setLabelText("Generating outputs...")
-            QApplication.processEvents()
-            self._create_stream_outputs(stream_order, flow_dir, profile, params)
-            progress.setValue(5)
-
-            QMessageBox.information(
-                self, "Success",
-                f"Stream network extracted successfully\n"
-                f"Max {params['order_method']} order: {stream_order.max()}\n"
-                f"Total stream length: {self._calculate_stream_length(stream_order, profile['transform']):.1f} m"
-            )
-
+            def job(progress):
+                progress(10, "Thresholding...")
+                streams = terrain.extract_streams(res['acc'], params['method'], params['threshold'])
+                if not streams.any():
+                    raise ValueError("No stream cells: the threshold is too high")
+                progress(40, f"{params['order_method']} stream order...")
+                order = terrain.stream_order(res['flow_dir'], streams, params['order_method'].lower())
+                progress(70, "Vectorising...")
+                features = self.image_processor.streams_to_vector(order, res['flow_dir'], transform)
+                return {'order': order, 'features': features, 'params': params}
+            self._start_validation_job(job, lambda r: self._on_streams_done(r, profile), "Stream network")
         except Exception as e:
-            QMessageBox.critical(
-                self, "Extraction Failed",
-                f"{str(e)}\n\n"
-                "Possible fixes:\n"
-                "1. Check input DEM has valid CRS\n"
-                "2. Verify DEM contains elevation data\n"
-                "3. Use projected coordinates (e.g., UTM)\n"
-                "4. Pre-process DEM to fill sinks"
-            )
+            self.show_error(f"Stream extraction failed: {e}")
+
+    def _on_streams_done(self, r, profile):
+        self._val_progress.close()
+        try:
+            self._create_stream_outputs(r['order'], r['features'], profile, r['params'])
+            lines = r['features']
+            length_m = 0.0
+            if lines:
+                gdf = self.layers["Stream_Lines"]['gdf']
+                metric = gdf if (gdf.crs is not None and gdf.crs.is_projected) else gdf.to_crs(gdf.estimate_utm_crs())
+                length_m = float(metric.length.sum())
+            QMessageBox.information(
+                self, "Stream network",
+                f"{r['params']['order_method']} order up to {int(r['order'].max())}\n"
+                f"{len(lines):,} line features, total length {length_m / 1000.0:,.2f} km")
+        except Exception as e:
+            self.show_error(f"Could not create the stream layers: {e}")
+
         
 
     def _get_stream_parameters(self, accumulation):
@@ -4578,7 +3894,7 @@ class SatelliteImageApp(QMainWindow):
         order_group = QGroupBox("Stream Ordering Method")
         order_layout = QVBoxLayout()
         self.order_combo = QComboBox()
-        self.order_combo.addItems(["Strahler", "Shreve", "Horton"])
+        self.order_combo.addItems(["Strahler", "Shreve"])
         order_layout.addWidget(self.order_combo)
         order_group.setLayout(order_layout)
         
@@ -4647,217 +3963,308 @@ class SatelliteImageApp(QMainWindow):
             
         button_box.accepted.connect(lambda: dialog.accept() if validate() else None)
     
-    def _create_stream_outputs(self, stream_order, flow_dir, profile, params):
-        """Create all output layers"""
-        # Raster layer
+    def _create_stream_outputs(self, stream_order, features, profile, params):
+        """Raster layer with the stream order and a vector layer with the stream lines."""
+        raster_profile = dict(profile)
+        raster_profile.update(dtype='float32', nodata=0.0, count=1)
+        order_f = stream_order.astype(np.float32)
         self.layers["Stream_Order"] = {
-            'image': stream_order[np.newaxis, ...],
-            'profile': profile,
-            'file_name': f"Stream_Order_{params['threshold']}",
-            'cmap': 'viridis',
-            'vmin': 1,
-            'vmax': np.max(stream_order)
-        }
-        
-        # Vector layer
-        stream_lines = self.image_processor.streams_to_vector(stream_order, flow_dir, profile['transform'])
-        self._save_stream_vectors(stream_lines, profile['crs'])
-        
-        # Add to layer list
-        self.layer_list.addItem(QListWidgetItem("Stream_Order"))
-        self.layer_list.addItem(QListWidgetItem("Stream_Lines"))
-
-    def _show_progress(self, message):
-        """Context manager for progress dialogs"""
-        progress = QProgressDialog(message, "Cancel", 0, 0, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-        return progress
-
-
-    def _add_stream_layers(self, stream_order, flow_dir, profile):
-        """Create raster and vector stream layers"""
-        # Raster stream order
-        self.layers["Stream_Order"] = {
-            'image': stream_order[np.newaxis, ...],
-            'profile': profile,
-            'file_name': "Stream_Order",
-            'cmap': 'viridis',
-            'vmin': 1,
-            'vmax': np.max(stream_order)
+            'image': order_f[np.newaxis, ...], 'profile': raster_profile,
+            'file_name': f"Stream_Order_{params['method']}_{params['threshold']}",
+            'cmap': 'viridis', 'vmin': 1, 'vmax': float(max(1, stream_order.max())),
         }
         self.layer_list.addItem(QListWidgetItem("Stream_Order"))
-        
-        # Vector streams
-        stream_lines = self.image_processor.streams_to_vector(
-            stream_order, flow_dir, profile['transform']
-        )
-        self._save_stream_vectors(stream_lines, profile['crs'])
+        self.display_raster_layer(order_f[np.newaxis, ...], "Stream_Order")
+        if features:
+            gdf = gpd.GeoDataFrame({'order': [f['properties']['order'] for f in features]},
+                                   geometry=[f['geometry'] for f in features], crs=profile.get('crs'))
+            layer_data = {'type': 'vector', 'gdf': gdf, 'file_name': 'Stream_Lines',
+                          'style': {'color': '#1f77b4', 'width': 1}}
+            self.layers["Stream_Lines"] = layer_data
+            self.layer_list.addItem(QListWidgetItem("Stream_Lines"))
+            self.display_vector_layer(layer_data, "Stream_Lines")
 
-    def _save_stream_vectors(self, features, crs):
-        """Save stream vectors to temporary GeoJSON"""
-        import geopandas as gpd
-        from datetime import datetime
-        
-        gdf = gpd.GeoDataFrame.from_features(
-            [{
-                'type': 'Feature',
-                'geometry': f['geometry'].__geo_interface__,
-                'properties': f['properties']
-            } for f in features],
-            crs=crs
-        )
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = f"/tmp/streams_{timestamp}.geojson"
-        gdf.to_file(output_path, driver='GeoJSON')
-        
-        self.layers["Stream_Lines"] = {
-            'path': output_path,
-            'type': 'vector',
-            'name': "Stream_Lines"
-        }
-        self.layer_list.addItem(QListWidgetItem("Stream_Lines"))
+
+
 
     
     
-######################################  drainage_channels #################
-    def generate_drainage_channels(self):
-        """Generate drainage channels from selected DEM and add to layers"""
+    # ================================================================== watershed / HAND / TWI
+    def _add_derived_layer(self, name, data2d, profile, cmap='viridis', vmin=None, vmax=None, nodata=float('nan'), dtype='float32'):
+        """Register a single-band result that keeps the DEM's georeferencing; replaces a layer of the same name."""
+        prof = dict(profile)
+        prof.update(dtype=dtype, nodata=nodata, count=1, height=data2d.shape[0], width=data2d.shape[1])
+        layer = {'image': np.asarray(data2d)[np.newaxis, ...], 'profile': prof, 'file_name': name, 'cmap': cmap, 'type': 'raster'}
+        if vmin is not None:
+            layer['vmin'] = vmin
+        if vmax is not None:
+            layer['vmax'] = vmax
+        is_new = name not in self.layers
+        self.layers[name] = layer
+        if is_new:
+            self.layer_list.addItem(QListWidgetItem(name))
+        self.display_raster_layer(layer, name)
+        return layer
+
+    def _with_flow(self, title, on_ready):
+        """Run (or reuse) depression filling + D8 + accumulation for the selected DEM, then call
+        ``on_ready(dem, profile, res)``. The result is cached per layer so several analyses do not repeat it."""
+        dem, profile = self._dem_for_hydrology()
+        if dem is None:
+            return
+        name = self.layer_list.currentItem().text()
+        key = (name, id(self.layers[name]['image']))
+        cache = getattr(self, '_hydro_cache', None)
+        if cache and cache['key'] == key:
+            on_ready(cache['dem'], profile, cache['res'])
+            return
+        if dem.size > 4_000_000 and QMessageBox.question(
+                self, "Large DEM", f"{dem.size:,} cells: depression filling may take a minute. Continue?",
+                QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
+            return
+
+        def done(res):
+            self._val_progress.close()
+            self._hydro_cache = {'key': key, 'dem': dem, 'res': res}
+            on_ready(dem, profile, res)
+        self._start_validation_job(self._flow_job(dem, profile['transform'], profile.get('crs')), done, title)
+
+    def _stream_mask_from_dialog(self, res):
+        params = self._get_stream_parameters(res['acc'])
+        if not params:
+            return None, None
+        streams = terrain.extract_streams(res['acc'], params['method'], params['threshold'])
+        if not streams.any():
+            QMessageBox.warning(self, "No streams", "The threshold is too high: no stream cells.")
+            return None, None
+        return streams, params
+
+    # ---- HAND
+    def calculate_hand(self):
         try:
-            # 1. Get selected DEM layer
-            if not self.layer_list.currentItem():
-                QMessageBox.warning(self, "Error", "Please select a DEM layer first")
-                return
-                
-            layer_name = self.layer_list.currentItem().text()
-            layer = self.layers.get(layer_name)
-            
-            if not layer:
-                QMessageBox.warning(self, "Error", "Selected layer not found")
-                return
+            self._with_flow("HAND: flow", self._hand_ready)
+        except Exception as e:
+            self.show_error(f"HAND failed: {e}")
 
-            # 2. Check if we have a valid path
-            if 'path' not in layer or not layer['path'] or not os.path.exists(layer['path']):
-                # Create temp file if in-memory
-                temp_path = os.path.join(tempfile.gettempdir(), f"temp_dem_{time.time()}.tif")
-                with rasterio.open(temp_path, 'w', **layer['profile']) as dst:
-                    dst.write(layer['image'])
-                layer['temp_path'] = temp_path
-                dem_path = temp_path
+    def _hand_ready(self, dem, profile, res):
+        streams, params = self._stream_mask_from_dialog(res)
+        if streams is None:
+            return
+        xres, yres = terrain.cell_size(profile['transform'], dem.shape, profile.get('crs'))
+
+        def job(progress):
+            progress(20, "HAND along the flow paths...")
+            hnd, dist = basins.hand(res['filled'], res['flow_dir'], streams, xres, yres)
+            return {'hand': hnd, 'dist': dist}
+
+        def done(r):
+            self._val_progress.close()
+            try:
+                hnd = r['hand']
+                finite = hnd[np.isfinite(hnd)]
+                if finite.size == 0:
+                    raise ValueError("No cell drains to a stream cell; lower the stream threshold")
+                vmax = float(np.percentile(finite, 99))
+                self._add_derived_layer("HAND", hnd, profile, cmap='YlGnBu_r', vmin=0, vmax=max(vmax, 1.0))
+                self._add_derived_layer("Distance_to_Drainage", r['dist'], profile, cmap='viridis')
+                self.display_raster_layer(self.layers["HAND"], "HAND")
+                h, ok = QInputDialog.getDouble(
+                    self, "Flood-prone mask",
+                    f"HAND median {np.median(finite):.1f} m, 95th percentile {np.percentile(finite, 95):.1f} m.\n"
+                    "Create a mask of cells with HAND <= (m)?  (Cancel to skip)", 5.0, 0.1, 1000.0, 1)
+                if ok:
+                    m = np.where(np.isfinite(hnd), (hnd <= h).astype(np.uint8), 0).astype(np.uint8)
+                    self._add_derived_layer(f"HAND_le_{h:g}m", m, profile, cmap='Blues', vmin=0, vmax=1, nodata=0, dtype='uint8')
+                    pct = 100.0 * float(m.sum()) / finite.size
+                    QMessageBox.information(
+                        self, "HAND mask",
+                        f"{pct:.1f}% of the cells that drain to a stream are within {h:g} m above it.\n"
+                        "HAND is a terrain-only susceptibility indicator, not a flood extent: validate it against an "
+                        "independent flood map before drawing conclusions.")
+            except Exception as e:
+                self.show_error(f"HAND failed: {e}")
+        self._start_validation_job(job, done, "HAND")
+
+    # ---- TWI / SPI
+    def calculate_twi_spi(self):
+        try:
+            self._with_flow("TWI: flow", self._twi_ready)
+        except Exception as e:
+            self.show_error(f"TWI/SPI failed: {e}")
+
+    def _twi_ready(self, dem, profile, res):
+        xres, yres = terrain.cell_size(profile['transform'], dem.shape, profile.get('crs'))
+
+        def job(progress):
+            progress(30, "TWI...")
+            w = basins.twi(res['acc'], res['filled'], xres, yres)
+            progress(70, "SPI...")
+            p = basins.spi(res['acc'], res['filled'], xres, yres)
+            return {'twi': w, 'spi': p}
+
+        def done(r):
+            self._val_progress.close()
+            try:
+                for key, name, cmap in (('twi', 'TWI', 'YlGnBu'), ('spi', 'SPI', 'magma')):
+                    a = r[key]
+                    fin = a[np.isfinite(a)]
+                    if fin.size:
+                        self._add_derived_layer(name, a, profile, cmap=cmap, vmin=float(np.percentile(fin, 2)),
+                                                vmax=float(np.percentile(fin, 98)))
+                self.display_raster_layer(self.layers["TWI"], "TWI")
+            except Exception as e:
+                self.show_error(f"TWI/SPI failed: {e}")
+        self._start_validation_job(job, done, "TWI / SPI")
+
+    # ---- watershed
+    def delineate_watershed_tool(self):
+        try:
+            self._with_flow("Watershed: flow", self._watershed_ready)
+        except Exception as e:
+            self.show_error(f"Watershed failed: {e}")
+
+    def _watershed_ready(self, dem, profile, res):
+        self._pending_basin = (dem, profile, res)
+        QMessageBox.information(
+            self, "Pour point",
+            "Display the DEM (or any layer derived from it, e.g. Flow_Accumulation), then click the outlet of the basin on the map.\n"
+            "The click is snapped to the cell with the highest flow accumulation within 5 cells.\n"
+            "Turn off the zoom/pan tool first.")
+        self.canvas.setCursor(Qt.CrossCursor)
+        self._basin_cid = self.canvas.mpl_connect('button_press_event', self._on_pour_point_click)
+
+    def _on_pour_point_click(self, event):
+        if event.inaxes is not self.ax or event.button != 1 or event.xdata is None:
+            return
+        if getattr(self, 'nav_toolbar', None) is not None and getattr(self.nav_toolbar, 'mode', ''):
+            return                                          # zoom/pan active: not a pour-point click
+        self.canvas.mpl_disconnect(self._basin_cid)
+        self.canvas.unsetCursor()
+        dem, profile, res = self._pending_basin
+        try:
+            shown = self.layers.get(getattr(self, 'current_layer', None)) or {}
+            img = shown.get('image')
+            if img is None or np.asarray(img).shape[-2:] != dem.shape:
+                QMessageBox.warning(self, "Pour point",
+                                    "The displayed layer does not have the DEM's grid. Display the DEM or one of its derived layers and try again.")
+                return
+            sp = shown.get('profile') or {}
+            tr = sp.get('transform') or profile['transform']
+            if georef.axis_spec(tr, sp.get('crs') or profile.get('crs'), *dem.shape).extent is None:
+                row, col = int(round(event.ydata)), int(round(event.xdata))
             else:
-                dem_path = layer['path']
-
-            # 3. Ask user for parameters
-            threshold, ok = QInputDialog.getInt(
-                self, "Channel Threshold", 
-                "Flow accumulation threshold (higher = fewer channels):",
-                value=1000, min=100, max=10000, step=100)
-            if not ok:
-                if 'temp_path' in layer:
-                    os.remove(layer['temp_path'])
-                    del layer['temp_path']
+                rc = georef.map_to_pixel(tr, event.xdata, event.ydata)
+                if rc is None:
+                    raise ValueError("Cannot convert the click to a pixel")
+                row, col = rc
+            if not (0 <= row < dem.shape[0] and 0 <= col < dem.shape[1]):
+                QMessageBox.warning(self, "Pour point", "The click is outside the DEM.")
                 return
-
-            # 4. Create output directory in temp
-            output_dir = os.path.join(tempfile.gettempdir(), f"drainage_{time.time()}")
-            os.makedirs(output_dir, exist_ok=True)
-
-            # 5. Process DEM using WhiteboxTools
-            wbt = WhiteboxTools()
-            wbt.verbose = False
-            wbt.work_dir = output_dir
-
-            # Hydrological processing
-            filled_dem = os.path.join(output_dir, "filled_dem.tif")
-            flow_dir = os.path.join(output_dir, "flow_dir.tif")
-            flow_accum = os.path.join(output_dir, "flow_accum.tif")
-            channels_raster = os.path.join(output_dir, "channels.tif")
-            channels_vector = os.path.join(output_dir, "channels.shp")
-
-            wbt.fill_depressions(dem_path, filled_dem)
-            wbt.d8_pointer(filled_dem, flow_dir)
-            wbt.d8_flow_accumulation(flow_dir, flow_accum)
-            wbt.extract_streams(flow_accum, channels_raster, threshold=threshold)
-            wbt.raster_streams_to_vector(channels_raster, flow_dir, channels_vector)
-
-            # 6. Add results to layers
-            base_name = f"{layer_name}_drainage"
-            
-            # Add flow accumulation
-            self.add_raster_layer(
-                flow_accum,
-                f"{base_name}_flow_accum",
-                colormap='viridis'
-            )
-            
-            # Add channel network (raster)
-            self.add_raster_layer(
-                channels_raster,
-                f"{base_name}_channels",
-                colormap='blues'
-            )
-            
-            # Add channel network (vector)
-            self.add_vector_layer(
-                channels_vector,
-                f"{base_name}_streams"
-            )
-
-            # 7. Cleanup temporary files
-            if 'temp_path' in layer:
-                os.remove(layer['temp_path'])
-                del layer['temp_path']
-            shutil.rmtree(output_dir)
-
-            QMessageBox.information(
-                self, "Success", 
-                "Drainage channels generated and added to layers")
-
+            self._run_watershed(row, col, dem, profile, res)
         except Exception as e:
-            QMessageBox.critical(
-                self, "Error", 
-                f"Failed to generate drainage channels: {str(e)}")
-            # Cleanup if error occurs
-            if 'temp_path' in locals() and os.path.exists(temp_path):
-                os.remove(temp_path)
-            if 'output_dir' in locals() and os.path.exists(output_dir):
-                shutil.rmtree(output_dir)
+            self.show_error(f"Watershed failed: {e}")
 
-    def add_raster_layer(self, path, name, colormap=None):
-        """Add a raster layer to the application"""
+    def _run_watershed(self, row, col, dem, profile, res):
+        streams, params = self._stream_mask_from_dialog(res)
+        if streams is None:
+            return
+        xres, yres = terrain.cell_size(profile['transform'], dem.shape, profile.get('crs'))
+        fd, acc = res['flow_dir'], res['acc']
+
+        def job(progress):
+            progress(10, "Snapping the pour point to the stream...")
+            r, c = basins.snap_to_stream(acc, row, col, radius=5)
+            progress(30, "Delineating the watershed...")
+            mask = basins.delineate_watershed(fd, r, c)
+            progress(55, "Stream order...")
+            order = terrain.stream_order(fd, streams, 'strahler')
+            progress(75, "Morphometrics...")
+            metrics = basins.basin_morphometrics(dem, mask, fd, streams, order, xres, yres, (r, c))
+            try:
+                ra, rh, hi = basins.hypsometric_curve(dem, mask)
+            except ValueError:
+                ra = rh = None
+                hi = float('nan')
+            return {'mask': mask, 'row': r, 'col': c, 'metrics': metrics, 'hi': hi, 'curve': (ra, rh)}
+
+        self._start_validation_job(job, lambda r: self._on_watershed_done(r, profile, params), "Watershed")
+
+    def _on_watershed_done(self, r, profile, params):
+        self._val_progress.close()
         try:
-            with rasterio.open(path) as src:
-                profile = src.profile
-                image = src.read()
-                
-            self.layers[name] = {
-                'image': image,
-                'profile': profile,
-                'path': path,
-                'colormap': colormap
-            }
-            self.layer_list.addItem(name)
-            self.display_layer(name)
-            
+            mask, metrics = r['mask'], r['metrics']
+            k = 1
+            while f"Watershed_{k}" in self.layers:
+                k += 1
+            name = f"Watershed_{k}"
+            self._add_derived_layer(name, mask.astype(np.uint8), profile, cmap='Reds', vmin=0, vmax=1, nodata=0, dtype='uint8')
+            tr = profile['transform']
+            polys = [shape(g) for g, v in shapes(mask.astype(np.uint8), mask=mask, transform=tr) if v == 1]
+            if polys:
+                attrs = {  # short names: valid as shapefile fields (<= 10 characters)
+                    'area_km2': metrics["Area (km2)"], 'perim_km': metrics["Perimeter (km)"],
+                    'len_km': metrics["Basin length, longest flow path (km)"], 'relief_m': metrics["Relief (m)"],
+                    'dd_kmkm2': metrics["Drainage density Dd (km/km2)"], 'fs': metrics["Stream frequency Fs (segments/km2)"],
+                    'rb': metrics["Mean bifurcation ratio Rb"], 'rf': metrics["Form factor Rf (A / Lb^2)"],
+                    're': metrics["Elongation ratio Re (2 sqrt(A/pi) / Lb)"], 'rc': metrics["Circularity ratio Rc (4 pi A / P^2)"],
+                    'hi': r['hi'], 'max_order': metrics["Maximum stream order (Strahler)"],
+                }
+                geom = polys[0] if len(polys) == 1 else unary_union(polys)
+                gdf = gpd.GeoDataFrame([attrs], geometry=[geom], crs=profile.get('crs'))
+                lname = f"{name}_Polygon"
+                layer_data = {'type': 'vector', 'gdf': gdf, 'file_name': lname, 'style': {'color': '#d62728', 'width': 2}}
+                self.layers[lname] = layer_data
+                self.layer_list.addItem(QListWidgetItem(lname))
+            self.display_raster_layer(self.layers[name], name)
+            self._show_basin_report(name, r, params)
         except Exception as e:
-            print(f"Error adding raster layer {name}: {str(e)}")
+            self.show_error(f"Could not create the watershed layers: {e}")
 
-    def add_vector_layer(self, path, name):
-        """Add a vector layer to the application"""
-        try:
-            # For vector layers, we'll just store the path
-            self.layers[name] = {
-                'path': path,
-                'type': 'vector'
-            }
-            self.layer_list.addItem(name)
-            
-            # You'll need to implement vector display separately
-            self.display_vector_layer(name)
-            
-        except Exception as e:
-            print(f"Error adding vector layer {name}: {str(e)}")
+    def _show_basin_report(self, name, r, params):
+        metrics, hi = r['metrics'], r['hi']
+        text = (f"{name}: outlet at row {r['row']}, column {r['col']}\n"
+                f"Streams: {params['method']} threshold {params['threshold']}; Strahler order\n"
+                f"{'-' * 60}\n{basins.format_report(metrics, hi)}\n{'-' * 60}\n"
+                "Notes: lengths follow D8 paths (they over-estimate straight-line distances); the perimeter counts cell\n"
+                "edges (staircase). Geographic DEMs use cell sizes converted to metres at the mid-latitude.")
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Basin morphometrics - {name}")
+        dlg.setMinimumSize(760, 560)
+        lay = QVBoxLayout(dlg)
+        box = QTextEdit(); box.setReadOnly(True); box.setFontFamily("Courier New"); box.setPlainText(text)
+        lay.addWidget(box)
+        row = QHBoxLayout()
+        b_csv = QPushButton("Save table (CSV)..."); b_ok = QPushButton("Close")
+        row.addWidget(b_csv); row.addStretch(1); row.addWidget(b_ok)
+        lay.addLayout(row)
+        b_ok.clicked.connect(dlg.accept)
+
+        def save_csv():
+            import csv
+            path, _ = QFileDialog.getSaveFileName(self, "Save morphometrics", f"{name}_morphometrics.csv", "CSV (*.csv)")
+            if not path:
+                return
+            try:
+                with open(path, "w", newline="", encoding="utf-8") as fh:
+                    wr = csv.writer(fh)
+                    wr.writerow(["parameter", "value"])
+                    for kk, vv in metrics.items():
+                        wr.writerow([kk, vv if not isinstance(vv, dict) else "; ".join(f"{a}:{b}" for a, b in vv.items())])
+                    wr.writerow(["Hypsometric integral HI", hi])
+                    ra, rh = r['curve']
+                    if ra is not None:
+                        wr.writerow([]); wr.writerow(["relative_area", "relative_height"])
+                        for a, b_ in zip(ra, rh):
+                            wr.writerow([f"{a:.5f}", f"{b_:.5f}"])
+                QMessageBox.information(self, "Saved", f"Saved to {path}")
+            except OSError as exc:
+                QMessageBox.critical(self, "Save failed", str(exc))
+        b_csv.clicked.connect(save_csv)
+        dlg.exec_()
+
+######################################  drainage_channels #################
+
+
 
     # def display_layer(self, layer_name, cmap=None):
     #     """Display a raster layer with optional colormap"""
@@ -4870,97 +4277,10 @@ class SatelliteImageApp(QMainWindow):
         
     #     # Your existing display implementation here
     #     # ... (use cmap parameter when calling imshow)
-    def display_layer(self, layer_name=None):
-        """Display either raster or vector layer"""
-        if not layer_name:
-            if not self.layer_list.currentItem():
-                return
-            layer_name = self.layer_list.currentItem().text()
-        
-        if layer_name not in self.layers:
-            return
-        
-        layer = self.layers[layer_name]
-        self.ax.clear()
-        
-        # Handle raster display
-        if layer.get('type') == 'raster' or 'image' in layer:
-            self.display_raster_layer(layer['image'], layer_name)  # Your existing function
-        
-        # Handle vector display
-        elif layer.get('type') == 'vector':
-            gdf = layer['gdf']
-            
-            # Convert to matplotlib patches
-            for geom in gdf.geometry:
-                if geom.geom_type == 'Polygon':
-                    x, y = geom.exterior.xy
-                    self.ax.fill(x, y, alpha=0.3, fc=layer['color'])
-                    self.ax.plot(x, y, color=layer['color'], linewidth=layer['line_width'])
-                elif geom.geom_type == 'MultiPolygon':
-                    for poly in geom.geoms:
-                        x, y = poly.exterior.xy
-                        self.ax.fill(x, y, alpha=0.3, fc=layer['color'])
-                        self.ax.plot(x, y, color=layer['color'], linewidth=layer['line_width'])
-        
-        self.ax.set_title(layer_name)
-        self.ax.set_aspect('equal')
-        self.canvas.draw()
 
-    def on_layer_selected(self, item):
-        """When a layer is selected in the list"""
-        layer_name = item.text()
-        self.display_layer(layer_name)
 
-    def update_layer_style(self, layer_name, color=None, line_width=None):
-        """Update vector layer display properties"""
-        if layer_name in self.layers and self.layers[layer_name].get('type') == 'vector':
-            if color:
-                self.layers[layer_name]['color'] = color
-            if line_width:
-                self.layers[layer_name]['line_width'] = line_width
-            self.display_layer(layer_name)
 
-    def contextMenuEvent(self, event):
-        """Right-click menu for layer operations"""
-        item = self.layer_list.itemAt(event.pos())
-        if not item:
-            return
-            
-        layer_name = item.text()
-        if layer_name not in self.layers:
-            return
-            
-        menu = QMenu()
-        
-        # Common actions
-        remove_action = QAction("Remove Layer", self)
-        remove_action.triggered.connect(lambda: self.remove_layer(layer_name))
-        menu.addAction(remove_action)
-        
-        # Vector-specific actions
-        if self.layers[layer_name].get('type') == 'vector':
-            style_action = QAction("Change Style", self)
-            style_action.triggered.connect(lambda: self.change_vector_style(layer_name))
-            menu.addAction(style_action)
-            
-            attributes_action = QAction("Show Attributes", self)
-            attributes_action.triggered.connect(lambda: self.show_attributes(layer_name))
-            menu.addAction(attributes_action)
-        
-        menu.exec_(event.globalPos())
 
-    def change_vector_style(self, layer_name):
-        """Dialog to change vector appearance"""
-        color = QColorDialog.getColor()
-        if color.isValid():
-            width, ok = QInputDialog.getDouble(
-                self, "Line Width", "Enter line width:", 
-                value=self.layers[layer_name].get('line_width', 1.0),
-                min=0.1, max=5.0, decimals=1
-            )
-            if ok:
-                self.update_layer_style(layer_name, color.name(), width)
 
 #$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ cliping raster $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ 
     def raster_clipping_process(self):
@@ -5045,28 +4365,33 @@ class SatelliteImageApp(QMainWindow):
         
         # Get bounds from the selected layer
         try:
-            profile = layer_data['profile']
-            transform = profile['transform']
-            width = profile['width']
-            height = profile['height']
-            
-            # Calculate geographic bounds
-            xmin, ymax = transform * (0, 0)
-            xmax, ymin = transform * (width, height)
-            
+            profile = layer_data.get('profile') or {}
+            transform = profile.get('transform')
+            img = layer_data.get('image')
+            if img is None or not georef.is_georeferenced(transform, profile.get('crs')):
+                QMessageBox.warning(self, "Not georeferenced",
+                                    f"Layer '{self.selected_layer}' has no geotransform, so map coordinates are unknown.\n"
+                                    "Use 'pixel coordinates' for this layer, or select the original GeoTIFF layer.")
+                return
+            height, width = np.asarray(img).shape[-2:]
+            xmin, ymax = georef.pixel_to_map(transform, 0, 0)
+            xmax, ymin = georef.pixel_to_map(transform, height, width)
+            geographic = georef.crs_description(profile.get('crs'))[0]
+            fmt = "{:.6f}" if geographic else "{:.2f}"
+
             # Update input fields with suggested values
-            self.xmin_input.setText(f"{xmin:.2f}")
-            self.ymin_input.setText(f"{ymin:.2f}")
-            self.xmax_input.setText(f"{xmax:.2f}")
-            self.ymax_input.setText(f"{ymax:.2f}")
-            
-            QMessageBox.information(self, "Layer Selected", 
-                                f"Layer '{self.selected_layer}' loaded.\n"
-                                f"Suggested bounds have been populated.")
+            self.xmin_input.setText(fmt.format(min(xmin, xmax)))
+            self.ymin_input.setText(fmt.format(min(ymin, ymax)))
+            self.xmax_input.setText(fmt.format(max(xmin, xmax)))
+            self.ymax_input.setText(fmt.format(max(ymin, ymax)))
+
+            QMessageBox.information(self, "Layer Selected",
+                                    f"Layer '{self.selected_layer}' loaded.\n"
+                                    f"Suggested bounds (full extent, {'degrees' if geographic else 'map units'}) have been populated.")
         except Exception as e:
-            QMessageBox.warning(self, "Info", 
-                            f"Selected layer '{self.selected_layer}' but couldn't get bounds: {str(e)}")
-    
+            QMessageBox.warning(self, "Info",
+                                f"Selected layer '{self.selected_layer}' but couldn't get bounds: {str(e)}")
+
     def execute_clipping(self, dialog):
         """Execute the clipping process with comprehensive error handling"""
         try:
@@ -5078,7 +4403,11 @@ class SatelliteImageApp(QMainWindow):
             # Get layer data
             layer_data = self.layers[self.selected_layer]
             image = layer_data['image']
-            profile = layer_data['profile']
+            profile = layer_data.get('profile') or {}
+            if profile.get('transform') is None:
+                QMessageBox.warning(self, "Not georeferenced",
+                                    f"Layer '{self.selected_layer}' has no geotransform and cannot be clipped by map coordinates.")
+                return
             original_path = layer_data.get('file_name', 'memory_layer')
 
             # Get and validate coordinates
@@ -5138,7 +4467,7 @@ class SatelliteImageApp(QMainWindow):
             
             # Display image without legend if requested
             if remove_legend:
-                self.display_image_no_legend(clipped_image, clipped_name)
+                self.display_image_no_legend(clipped_image, clipped_name, new_profile)
             else:
                 self.display_raster_layer(clipped_image, clipped_name)
             
@@ -5164,9 +4493,11 @@ class SatelliteImageApp(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to clip raster:\n{str(e)}")
 
-    def display_image_no_legend(self, image, layer_name):
-        """Display image using matplotlib with proper channel ordering"""
+    def display_image_no_legend(self, image, layer_name, profile=None):
+        """Display image using matplotlib with proper channel ordering (map extent kept, axes hidden)."""
         self.ax.clear()
+        if profile is None:
+            profile = (self.layers.get(layer_name) or {}).get('profile') or self._inherited_profile(image.shape)
         
         # Fix channel order if needed (for (channels, height, width) input)
         if len(image.shape) == 3 and image.shape[0] in [3, 4]:  # Channel-first format
@@ -5174,84 +4505,17 @@ class SatelliteImageApp(QMainWindow):
         
         # Display image
         if len(image.shape) == 2:  # Grayscale
-            self.ax.imshow(image, cmap='gray')
+            georef.draw_raster(self.ax, image, profile, decorate=False, cmap='gray')
         else:  # RGB/RGBA
-            self.ax.imshow(image)
+            georef.draw_raster(self.ax, image, profile, decorate=False)
         
         self.ax.axis('off')
         self.canvas.draw()
         self.statusBar().showMessage(f"Displaying: {layer_name} (no legend)")
 
-    def array_to_qimage(self, array: np.ndarray) -> QImage:
-        """Convert a NumPy array to QImage with proper memory handling."""
-        # Normalize to 0-255 if not already uint8
-        if array.dtype != np.uint8:
-            array = ((array - array.min()) / (array.max() - array.min()) * 255).astype(np.uint8)
-        
-        # Ensure contiguous memory layout (C-order)
-        array = np.ascontiguousarray(array)
-        
-        # Handle grayscale (2D) vs. RGB/RGBA (3D)
-        if len(array.shape) == 2:  # Grayscale
-            height, width = array.shape
-            bytes_per_line = width
-            return QImage(
-                array.data.tobytes(),  # Convert to bytes explicitly
-                width, 
-                height, 
-                bytes_per_line, 
-                QImage.Format_Grayscale8
-            )
-        elif len(array.shape) == 3:  # Multi-band (RGB/RGBA)
-            height, width, channels = array.shape
-            bytes_per_line = channels * width
-            if channels == 3:  # RGB
-                return QImage(
-                    array.data.tobytes(), 
-                    width, 
-                    height, 
-                    bytes_per_line, 
-                    QImage.Format_RGB888
-                )
-            elif channels == 4:  # RGBA
-                return QImage(
-                    array.data.tobytes(), 
-                    width, 
-                    height, 
-                    bytes_per_line, 
-                    QImage.Format_RGBA8888
-                )
-            else:  # Fallback to RGB (use first 3 bands)
-                return QImage(
-                    array[:, :, :3].data.tobytes(), 
-                    width, 
-                    height, 
-                    3 * width, 
-                    QImage.Format_RGB888
-                )
-        else:
-            raise ValueError("Unsupported array shape. Expected 2D (H x W) or 3D (H x W x C).")
 
 #$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
    
-    def save_canny_edge_image(self):
-        """
-        Saves an image after applying Canny edge detection.
-        """
-        if hasattr(self, 'image'):
-            file_name, _ = QFileDialog.getSaveFileName(self, "Save Canny Edge Image", "", "Images (*.tif *.tiff)")
-            if file_name:
-                try:
-                    # Update profile for Canny edge image
-                    self.profile.update({
-                        'count': 1,  # Single band
-                        'dtype': 'uint8',  # Data type
-                        'nodata': 0  # Valid nodata value for uint8
-                    })
-                    self.image_processor.save_image(self.image, self.profile, file_name)
-                    QMessageBox.information(self, "Success", f"Canny edge image saved as '{file_name}'")
-                except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Failed to save Canny edge image: {str(e)}")
 
     def save_edges_as_shapefile(self):
         if hasattr(self, 'image') and self.image.shape[0] == 1:  # Check if edges are detected
@@ -5280,197 +4544,17 @@ class SatelliteImageApp(QMainWindow):
 
     ################################## Setting Menue ########################################
     ####General Settings Dialog
-    def open_general_settings(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("General Settings")
-        layout = QVBoxLayout()
 
-        # Theme Selection
-        theme_label = QLabel("Theme:")
-        theme_combo = QComboBox()
-        theme_combo.addItems(["Light", "Dark"])
-        layout.addWidget(theme_label)
-        layout.addWidget(theme_combo)
 
-        # Default Save Location
-        save_location_label = QLabel("Default Save Location:")
-        save_location_edit = QLineEdit()
-        browse_button = QPushButton("Browse")
-        browse_button.clicked.connect(lambda: self.browse_save_location(save_location_edit))
-        layout.addWidget(save_location_label)
-        layout.addWidget(save_location_edit)
-        layout.addWidget(browse_button)
-
-        # Auto-Save Interval
-        auto_save_label = QLabel("Auto-Save Interval (minutes):")
-        auto_save_spin = QSpinBox()
-        auto_save_spin.setRange(1, 60)
-        layout.addWidget(auto_save_label)
-        layout.addWidget(auto_save_spin)
-
-        # Save Button
-        save_button = QPushButton("Save")
-        save_button.clicked.connect(lambda: self.save_general_settings(
-            theme_combo.currentText(),
-            save_location_edit.text(),
-            auto_save_spin.value()
-        ))
-        layout.addWidget(save_button)
-
-        dialog.setLayout(layout)
-        dialog.exec_()
-
-    def browse_save_location(self, save_location_edit):
-        folder = QFileDialog.getExistingDirectory(self, "Select Default Save Location")
-        if folder:
-            save_location_edit.setText(folder)
-
-    def save_general_settings(self, theme, save_location, auto_save_interval):
-        # Save settings (e.g., to a config file or database)
-        print(f"Theme: {theme}, Save Location: {save_location}, Auto-Save Interval: {auto_save_interval}")
-        QMessageBox.information(self, "Success", "General settings saved successfully.")
     #####Display Settings Dialog
-    def open_display_settings(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Display Settings")
-        layout = QVBoxLayout()
 
-        # Zoom Level
-        zoom_label = QLabel("Default Zoom Level:")
-        zoom_combo = QComboBox()
-        zoom_combo.addItems(["100%", "150%", "200%", "Fit to Window"])
-        layout.addWidget(zoom_label)
-        layout.addWidget(zoom_combo)
-
-        # Grid Visibility
-        grid_check = QCheckBox("Show Grid")
-        layout.addWidget(grid_check)
-
-        # Coordinate Display Format
-        coord_label = QLabel("Coordinate Display Format:")
-        coord_combo = QComboBox()
-        coord_combo.addItems(["Decimal Degrees", "Degrees Minutes Seconds"])
-        layout.addWidget(coord_label)
-        layout.addWidget(coord_combo)
-
-        # Save Button
-        save_button = QPushButton("Save")
-        save_button.clicked.connect(lambda: self.save_display_settings(
-            zoom_combo.currentText(),
-            grid_check.isChecked(),
-            coord_combo.currentText()
-        ))
-        layout.addWidget(save_button)
-
-        dialog.setLayout(layout)
-        dialog.exec_()
-
-    def save_display_settings(self, zoom_level, show_grid, coord_format):
-        # Save settings
-        print(f"Zoom Level: {zoom_level}, Show Grid: {show_grid}, Coordinate Format: {coord_format}")
-        QMessageBox.information(self, "Success", "Display settings saved successfully.")
     ##### Processing Settings Dialog
-    def open_processing_settings(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Processing Settings")
-        layout = QVBoxLayout()
 
-        # Default Classification Method
-        classification_label = QLabel("Default Classification Method:")
-        classification_combo = QComboBox()
-        classification_combo.addItems(["Random Forest", "SVM", "K-Means"])
-        layout.addWidget(classification_label)
-        layout.addWidget(classification_combo)
-
-        # Edge Detection Sigma
-        sigma_label = QLabel("Canny Edge Detection Sigma:")
-        sigma_spin = QDoubleSpinBox()
-        sigma_spin.setRange(0.1, 5.0)
-        sigma_spin.setSingleStep(0.1)
-        layout.addWidget(sigma_label)
-        layout.addWidget(sigma_spin)
-
-        # Save Button
-        save_button = QPushButton("Save")
-        save_button.clicked.connect(lambda: self.save_processing_settings(
-            classification_combo.currentText(),
-            sigma_spin.value()
-        ))
-        layout.addWidget(save_button)
-
-        dialog.setLayout(layout)
-        dialog.exec_()
-
-    def save_processing_settings(self, classification_method, sigma):
-        # Save settings
-        print(f"Classification Method: {classification_method}, Sigma: {sigma}")
-        QMessageBox.information(self, "Success", "Processing settings saved successfully.")
 ######Advanced Settings Dialog
-    def open_advanced_settings(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Advanced Settings")
-        layout = QVBoxLayout()
 
-        # GPU Acceleration
-        gpu_check = QCheckBox("Enable GPU Acceleration")
-        layout.addWidget(gpu_check)
 
-        # Logging Level
-        logging_label = QLabel("Logging Level:")
-        logging_combo = QComboBox()
-        logging_combo.addItems(["Debug", "Info", "Warning", "Error"])
-        layout.addWidget(logging_label)
-        layout.addWidget(logging_combo)
-
-        # Reset to Defaults
-        reset_button = QPushButton("Reset to Default Settings")
-        reset_button.clicked.connect(self.reset_settings)
-        layout.addWidget(reset_button)
-
-        # Save Button
-        save_button = QPushButton("Save")
-        save_button.clicked.connect(lambda: self.save_advanced_settings(
-            gpu_check.isChecked(),
-            logging_combo.currentText()
-        ))
-        layout.addWidget(save_button)
-
-        dialog.setLayout(layout)
-        dialog.exec_()
-
-    def save_advanced_settings(self, gpu_enabled, logging_level):
-        # Save settings
-        print(f"GPU Enabled: {gpu_enabled}, Logging Level: {logging_level}")
-        QMessageBox.information(self, "Success", "Advanced settings saved successfully.")
-
-    def reset_settings(self):
-        # Reset all settings to default
-        QMessageBox.information(self, "Reset", "All settings have been reset to default.")
     ##### About Dialog
-    def open_about(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("About")
-        layout = QVBoxLayout()
 
-        # Version Information
-        version_label = QLabel("Version: 1.0.0")
-        layout.addWidget(version_label)
-
-        # License Information
-        license_label = QLabel("License: MIT")
-        layout.addWidget(license_label)
-
-        # Check for Updates
-        update_button = QPushButton("Check for Updates")
-        update_button.clicked.connect(self.check_for_updates)
-        layout.addWidget(update_button)
-
-        dialog.setLayout(layout)
-        dialog.exec_()
-
-    def check_for_updates(self):
-        # Implement update check logic
-        QMessageBox.information(self, "Updates", "You are using the latest version.")
 
     def update_info_box(self, layer_data=None, file_path=None):
         """Update info box with enhanced vector file handling and nodata exclusion for rasters"""
@@ -5569,7 +4653,7 @@ class SatelliteImageApp(QMainWindow):
                     else:
                         with rasterio.open(file_path) as src:
                             img = src.read()
-                            profile = src.profile
+                            profile = dict(src.profile)  # rasterio's Profile is a UserDict, not a dict
                     
                     crs_info = self.get_crs_info(profile.get('crs'))
                     is_raster = True
@@ -5705,45 +4789,6 @@ class SatelliteImageApp(QMainWindow):
             self.info_box.setText(f"Error updating information: {str(e)}")
             traceback.print_exc()
 
-    def generate_info_html(self, metadata, title, image=None, num_bands=None):
-        """إنشاء محتوى HTML للمعلومات مع التنسيق المناسب"""
-        info_html = f"""
-        <style>
-            .info-table {{
-                width: 100%;
-                border-collapse: collapse;
-                font-family: Arial;
-                font-size: 10pt;
-            }}
-            .info-table td {{
-                padding: 4px;
-                vertical-align: top;
-                border-bottom: 1px solid #eee;
-            }}
-            .info-table tr:last-child td {{
-                border-bottom: none;
-            }}
-        </style>
-        <h3 style="color:#2c3e50;">{title}</h3>
-        <table class="info-table">
-        """
-        
-        for key, value in metadata.items():
-            info_html += f"""
-            <tr>
-                <td><b>{key}</b></td>
-                <td>{value}</td>
-            </tr>
-            """
-        
-        info_html += "</table>"
-        
-        if image is not None and num_bands is not None:
-            info_html += self.generate_suggestions(image, num_bands)
-        
-        info_html += '<p style="color:#7f8c8d;font-style:italic;">Right-click for more options</p>'
-        self.info_box.setHtml(info_html)
-        self.info_box.setContextMenuPolicy(Qt.CustomContextMenu)
 
     def get_crs_info(self, crs):
         """
@@ -5798,8 +4843,7 @@ class SatelliteImageApp(QMainWindow):
                 })
                 
         except Exception as e:
-            print(f"Error getting CRS info: {str(e)}")
-        
+            logging.info(f"Error getting CRS info: {str(e)}")
         return crs_info
 
     def generate_suggestions(self, image, num_bands):
@@ -5858,14 +4902,6 @@ class SatelliteImageApp(QMainWindow):
         self.show_stats(current_item)  # تمرير العنصر المحدد أو None إذا لم يكن هناك عنصر
 
 
-    def setup_ui_connections(self):
-        """يتم استدعاء هذه الدالة أثناء تهيئة الواجهة"""
-        # إزالة أي اتصال سابق لإظهار الإحصائيات عند النقر العادي
-        self.layer_list.itemClicked.disconnect(self.show_stats)  # إذا كان متصلاً سابقاً
-        
-        # الاتصال الجديد فقط للقائمة المنبثقة
-        self.info_box.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.info_box.customContextMenuRequested.connect(self.show_context_menu)
 
 
     def copy_metadata(self):
@@ -5878,11 +4914,6 @@ class SatelliteImageApp(QMainWindow):
             with open(file_name, 'w') as f:
                 f.write(self.info_box.toPlainText())
 
-    def get_current_layer_item(self):
-        """Get the currently selected layer from layer_list or return None"""
-        if hasattr(self, 'layer_list') and self.layer_list.currentItem():
-            return self.layer_list.currentItem()
-        return None
     
  
 
@@ -5910,7 +4941,7 @@ class SatelliteImageApp(QMainWindow):
                 return
 
             # Get nodata value from profile if exists
-            nodata = layer_data.get('profile', {}).get('nodata', None)
+            nodata = (layer_data.get('profile') or {}).get('nodata', None)
 
             # 2. Create dialog
             stats_dialog = QDialog(self)
@@ -6002,7 +5033,7 @@ class SatelliteImageApp(QMainWindow):
             stats_text.setFont(QFont('Consolas', 10))
             
             # Get nodata value from profile if exists
-            nodata = layer_data.get('profile', {}).get('nodata', None)
+            nodata = (layer_data.get('profile') or {}).get('nodata', None)
             
             # Calculate statistics based on valid_mask
             if valid_mask is not None:
@@ -6035,10 +5066,11 @@ class SatelliteImageApp(QMainWindow):
                 f"Histogram Bins: {bins}"
             ]
             
-            if 'crs' in layer_data['profile']:
-                stats_content.append(f"CRS: {layer_data['profile']['crs']}")
-            if 'transform' in layer_data['profile']:
-                stats_content.append(f"Resolution: {abs(layer_data['profile']['transform'].a):.2f}m")
+            prof = layer_data.get('profile') or {}
+            if prof.get('crs'):
+                stats_content.append(f"CRS: {prof['crs']}")
+            if prof.get('transform') is not None:
+                stats_content.append(f"Pixel size: {abs(prof['transform'].a):.6g} (CRS units)")
 
             # Create plot and add band statistics
             fig, ax = plt.subplots(figsize=(10, 6))
@@ -6235,63 +5267,7 @@ class SatelliteImageApp(QMainWindow):
         layout.addWidget(toolbar)
         layout.addWidget(canvas)
 
-    def update_raster_info(self, layer_data):
-        """Update the info box with basic raster information"""
-        try:
-            profile = layer_data['profile']
-            img = layer_data['image']
 
-            info_html = f"""
-            <div style="font-family: Arial; font-size: 10pt;">
-                <h3 style="color: #2c3e50;">Raster Information</h3>
-                <table style="border-collapse: collapse; width: 100%;">
-                    <tr style="border-bottom: 1px solid #ddd;">
-                        <td style="padding: 4px; font-weight: bold;">Dimensions:</td>
-                        <td style="padding: 4px;">{img.shape}</td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid #ddd;">
-                        <td style="padding: 4px; font-weight: bold;">Data Type:</td>
-                        <td style="padding: 4px;">{img.dtype}</td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid #ddd;">
-                        <td style="padding: 4px; font-weight: bold;">CRS:</td>
-                        <td style="padding: 4px;">{profile.get('crs', 'Unknown')}</td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid #ddd;">
-                        <td style="padding: 4px; font-weight: bold;">Resolution:</td>
-                        <td style="padding: 4px;">{abs(profile['transform'].a):.2f}m</td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid #ddd;">
-                        <td style="padding: 4px; font-weight: bold;">Min Value:</td>
-                        <td style="padding: 4px;">{np.nanmin(img):.2f}</td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid #ddd;">
-                        <td style="padding: 4px; font-weight: bold;">Max Value:</td>
-                        <td style="padding: 4px;">{np.nanmax(img):.2f}</td>
-                    </tr>
-                </table>
-                <p style="color: #7f8c8d; font-style: italic;">
-                    Right-click for more options
-                </p>
-            </div>
-            """
-            self.info_box.setHtml(info_html)
-            self.info_box.setContextMenuPolicy(Qt.CustomContextMenu)
-            self.info_box.customContextMenuRequested.connect(self.show_context_menu)
-
-        except Exception as e:
-            self.info_box.setText(f"Error loading raster info: {str(e)}")
-
-    def update_coordinate_display(self):
-        self.canvas.mpl_connect('motion_notify_event', self.show_pixel_coords)
-
-    def show_pixel_coords(self, event):
-        if event.inaxes == self.ax:
-            x = int(event.xdata)
-            y = int(event.ydata)
-            self.statusBar().showMessage(f"Pixel Coordinates: X={x}, Y={y}")
-        else:
-            self.statusBar().clearMessage()
     
     def get_cluster_color(self, cluster_id):
             # Define a color map for the clusters
@@ -6309,11 +5285,21 @@ class SatelliteImageApp(QMainWindow):
             ]
             return colors[cluster_id % len(colors)]
     
-    def display_classified_image(self, classified_image):
-            self.ax.clear()
-            self.ax.imshow(classified_image, cmap='viridis', extent=[0, classified_image.shape[1], classified_image.shape[0], 0])
-            self.ax.set_title('Classified Image')
-            self.canvas.draw()  
+    def display_classified_image(self, classified_image, profile=None, names=None, title='Classified Image'):
+        """Draw a classified raster in its real map coordinates with a legend.
+
+        ``profile``  grid of the raster (transform + CRS); defaults to the grid of the layer it came from.
+        ``names``    {class value: name}; a value 0 that is not named is treated as 'no data' and left blank.
+        """
+        arr = np.asarray(classified_image)
+        if profile is None:
+            profile = self._inherited_profile(arr.shape)
+        self.fig.clf()
+        self.ax = self.fig.add_subplot(111)
+        palette = [self.get_cluster_color(k) for k in range(10)]
+        georef.draw_classified(self.ax, arr, profile, names=names, palette=palette, title=title)
+        self.fig.tight_layout()
+        self.canvas.draw()
 
 
     def classify_with_kmeans(self):
@@ -6329,7 +5315,7 @@ class SatelliteImageApp(QMainWindow):
             n_clusters, ok = QInputDialog.getInt(
                 self, "Number of Clusters", 
                 "Enter the number of clusters (2-10):", 
-                2, 2, 10, 1
+                4, 2, 10, 1
             )
             if not ok:
                 QMessageBox.information(self, "Cancelled", "K-Means clustering cancelled by user.")
@@ -6347,47 +5333,49 @@ class SatelliteImageApp(QMainWindow):
             image_data = layer_data['image']
 
             # Preprocess the image for classification
-            if image_data.ndim == 3:  # RGB image
-                flattened_image = image_data.transpose(1, 2, 0).reshape(-1, 3)
+            if image_data.ndim == 3:  # every band takes part (3 for RGB, 5 for a Sentinel-2 stack, ...)
+                flattened_image = image_data.transpose(1, 2, 0).reshape(-1, image_data.shape[0]).astype(np.float32)
             else:  # Grayscale image
-                flattened_image = image_data[0].reshape(-1, 1)
+                flattened_image = image_data.reshape(-1, 1).astype(np.float32)
 
             # Perform K-Means clustering
             kmeans = KMeans(n_clusters=n_clusters, random_state=0)
             labels = kmeans.fit_predict(flattened_image)
 
             # Reshape the labels to the original image dimensions
-            if image_data.ndim == 3:
-                height, width, _ = image_data.shape[1], image_data.shape[2], image_data.shape[0]
-            else:
-                height, width = image_data.shape[1], image_data.shape[2]
+            height, width = image_data.shape[-2], image_data.shape[-1]
 
-            classified_image = labels.reshape(height, width)
+            # Cluster ids 1..k (0 stays free for "no data", as in every other classified output of the program)
+            classified_image = (labels.reshape(height, width) + 1).astype(np.uint8)
+
+            # The result covers the same ground as the source image: same transform and CRS
+            result_prof = georef.result_profile(layer_data.get('profile'), count=1, dtype='uint8',
+                                                height=height, width=width)
 
             # Store the classified image
             self.classified_image = classified_image[np.newaxis, ...]
+            self.classified_profile = result_prof
 
-            # Convert the classified image to a 3D RGB image for display
-            colored_image = np.zeros((height, width, 3), dtype=np.uint8)
-            for i in range(n_clusters):
-                for channel in range(3):
-                    colored_image[classified_image == i, channel] = self.get_cluster_color(i)[channel]
-
-            colored_image = np.clip(colored_image, 0, 255).astype(np.uint8)
-
-            # Display the colored classified image
-            self.display_raster_layer(np.transpose(colored_image, (2, 0, 1)), "K-Means Clustering")
+            # Display the clusters in map coordinates, with a legend
+            self.display_classified_image(classified_image, profile=result_prof,
+                                          names={k + 1: f"Cluster {k + 1}" for k in range(n_clusters)},
+                                          title=f"K-Means clustering ({n_clusters} clusters)")
 
             # Save the segmentation results
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             new_layer = f"Result_K_Mean_{timestamp}"
             self.layers[new_layer] = {
                 'image': self.classified_image,
-                'profile': layer_data['profile'].copy(),
+                'profile': dict(result_prof),
                 'file_name': f"K-Means Segmentation with {n_clusters} Clusters",
                 'crs': layer_data.get('crs', None),  # Ensure CRS is included
-                'cmap': 'viridis'  # Store the colormap for this layer
+                'cmap': 'viridis',  # only used by tools that need a continuous map
+                'type': 'raster',
+                'classified': True,
+                'class_names': {k + 1: f"Cluster {k + 1}" for k in range(n_clusters)},
+                'title': f"K-Means clustering ({n_clusters} clusters)",
             }
+            self.current_layer = new_layer
 
             # Update UI
             self.layer_list.addItem(QListWidgetItem(new_layer))
@@ -6404,9 +5392,8 @@ class SatelliteImageApp(QMainWindow):
             )
 
             if save_reply == QMessageBox.Yes:
-                # Save the classified image with CRS
-                self.save_classified_image(crs=layer_data.get('crs', None))
-                QMessageBox.information(self, "Saved", "Classified image saved successfully.")
+                # Save the classified image with the grid (transform + CRS) of the source image
+                self.save_classified_image(profile=result_prof)
             else:
                 QMessageBox.information(self, "Cancelled", "Classified image saving cancelled by user.")
 
@@ -6419,49 +5406,47 @@ class SatelliteImageApp(QMainWindow):
     
     #$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$444
     
-    def save_classified_image(self, crs=None):
-        """
-        Saves the classified image to a file with optional CRS information using rasterio.
+    def save_classified_image(self, crs=None, profile=None):
+        """Save the last classified/segmented image as a GeoTIFF that keeps the real grid of the source image.
+
+        ``profile``  grid of the result (transform + CRS); defaults to the profile stored with the result.
+        ``crs``      only used when the profile carries no CRS. Returns True when a file was written.
+        The program never writes a made-up position: without georeferencing the file has none, and says so.
         """
         if not hasattr(self, 'classified_image'):
             QMessageBox.warning(self, "No Image", "No classified image to save.")
-            return
+            return False
 
         try:
-            # Ask the user for the file path
             file_path, _ = QFileDialog.getSaveFileName(
-                self, "Save Classified Image", "", "GeoTIFF (*.tif);;All Files (*)"
+                self, "Save Classified Image", "", "GeoTIFF (*.tif);;PNG (*.png);;All Files (*)"
             )
             if not file_path:
-                return  # User canceled the save dialog
+                return False  # User canceled the save dialog
+            arr = np.asarray(self.classified_image)
+            if arr.ndim == 3:
+                arr = arr[0]
+            if profile is None:
+                profile = getattr(self, 'classified_profile', None)
+            if profile is None or georef.profile_transform_crs(profile)[0] is None:
+                profile = self._inherited_profile(arr.shape)
+            profile = dict(profile or {})
+            if profile.get('crs') is None and crs is not None:
+                profile['crs'] = georef.as_crs(crs)
 
-            # Save the classified image with CRS
-            if file_path.endswith('.tif'):
-                height, width = self.classified_image.shape[1], self.classified_image.shape[2]
-
-                # Define the transform (adjust as needed)
-                transform = from_origin(0, 0, 1, 1)  # Adjust origin and resolution as needed
-
-                # Save the image using rasterio
-                with rasterio.open(
-                    file_path,
-                    'w',
-                    driver='GTiff',
-                    height=height,
-                    width=width,
-                    count=1,  # Number of bands
-                    dtype=self.classified_image.dtype,
-                    crs=crs,  # Add CRS if provided
-                    transform=transform
-                ) as dst:
-                    dst.write(self.classified_image[0], 1)  # Write the first band
-
-                QMessageBox.information(self, "Success", "Classified image saved with CRS.")
+            if not os.path.splitext(file_path)[1]:
+                file_path += '.tif'
+            if file_path.lower().endswith(('.tif', '.tiff')):
+                info = georef.write_geotiff(file_path, arr, profile)
+                QMessageBox.information(self, "Saved", f"Classified image saved:\n{file_path}\n\n{georef.georef_note(info)}")
             else:
-                # Save as a regular image (no CRS)
                 from PIL import Image
-                Image.fromarray(self.classified_image[0]).save(file_path)
-                QMessageBox.information(self, "Success", "Classified image saved without CRS.")
+                Image.fromarray(arr.astype(np.uint8)).save(file_path)
+                QMessageBox.information(
+                    self, "Saved",
+                    f"Classified image saved as a plain picture:\n{file_path}\n\n"
+                    "Pictures carry no coordinates. Use GeoTIFF (*.tif) to keep the real position.")
+            return True
 
         except Exception as e:
             error_msg = (
@@ -6469,6 +5454,7 @@ class SatelliteImageApp(QMainWindow):
                 f"Traceback:\n{traceback.format_exc()}"
             )
             QMessageBox.critical(self, "Save Error", error_msg)
+            return False
 
     #$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
@@ -6507,31 +5493,35 @@ class SatelliteImageApp(QMainWindow):
             segmented_image, num_clusters = ImageProcessor.mean_shift_segmentation(image_data, bandwidth)  # Call static method
 
             # Convert the segmented image to uint8 (required for Shapefile saving)
-            segmented_image_uint8 = segmented_image.astype(np.uint8)
+            if int(segmented_image.max()) + 1 > 255:
+                raise ValueError(f"Mean-Shift found {int(segmented_image.max()) + 1} segments; at most 255 can be stored. "
+                                 "Increase the bandwidth.")
+            segmented_image_uint8 = (segmented_image + 1).astype(np.uint8)  # segment ids 1..k, 0 = no data
 
             # Store the segmented image
             self.classified_image = segmented_image_uint8[np.newaxis, ...]
 
-            # Convert the segmented image to a 3D RGB image for display
-            unique_labels = np.unique(segmented_image)
-            colored_image = np.zeros((segmented_image.shape[0], segmented_image.shape[1], 3), dtype=np.uint8)
-            for label in unique_labels:
-                for channel in range(3):
-                    colored_image[segmented_image == label, channel] = self.get_cluster_color(label)[channel]
+            # Same ground as the source image: same transform and CRS
+            result_prof = georef.result_profile(layer_data.get('profile'), count=1, dtype='uint8',
+                                                height=segmented_image_uint8.shape[0], width=segmented_image_uint8.shape[1])
+            self.classified_profile = result_prof
 
-            colored_image = np.clip(colored_image, 0, 255).astype(np.uint8)
-
-            # Display the colored segmented image
-            self.display_raster_layer(np.transpose(colored_image, (2, 0, 1)), "Mean-Shift Segmentation")
+            # Display the segments in map coordinates, with a legend
+            self.display_classified_image(segmented_image_uint8, profile=result_prof,
+                                          title=f"Mean-Shift segmentation ({num_clusters} segments)")
 
             # Save the segmentation results
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             new_layer = f"Result_Mean_Shift_{timestamp}"
             self.layers[new_layer] = {
                 'image': self.classified_image,
-                'profile': layer_data['profile'].copy(),
-                'file_name': f"Mean-Shift Segmentation with Bandwidth {bandwidth}"
+                'profile': dict(result_prof),
+                'file_name': f"Mean-Shift Segmentation with Bandwidth {bandwidth}",
+                'type': 'raster',
+                'classified': True,
+                'title': f"Mean-Shift segmentation ({num_clusters} segments)",
             }
+            self.current_layer = new_layer
 
             # Update UI
             self.layer_list.addItem(QListWidgetItem(new_layer))
@@ -6548,9 +5538,8 @@ class SatelliteImageApp(QMainWindow):
             )
 
             if save_reply == QMessageBox.Yes:
-                # Save the segmented image
-                self.save_classified_image()
-                QMessageBox.information(self, "Saved", "Segmented image saved successfully.")
+                # Save the segmented image with the grid (transform + CRS) of the source image
+                self.save_classified_image(profile=result_prof)
             else:
                 QMessageBox.information(self, "Cancelled", "Segmented image saving cancelled by user.")
 
@@ -6561,13 +5550,6 @@ class SatelliteImageApp(QMainWindow):
             )
             QMessageBox.critical(self, "Segmentation Error", error_msg)
 
-
-    def _handle_segmentation_error(self, error):
-        self.segmented_image = None
-        self.segmentation_analysis = {}
-        QMessageBox.critical(self, "Segmentation Error", 
-            f"Operation failed: {str(error)}\n"
-            f"Error type: {type(error).__name__}")
 
     def analyze_land_use(self):
         try:
@@ -6841,6 +5823,9 @@ class SatelliteImageApp(QMainWindow):
             format_type (str): 'dxf' or 'dwg' (default: 'dxf')
         """
         try:
+            if getattr(self, 'masks_gdf', None) is None:
+                QMessageBox.warning(self, "No segments", "Export the segmentation masks first (nothing to write to DXF).")
+                return
             import ezdxf
             from ezdxf.addons import geo
             from ezdxf.colors import RGB
@@ -6882,8 +5867,7 @@ class SatelliteImageApp(QMainWindow):
                         proxy = geo.proxy(msp, crs.to_wkt())
                         proxy.dxf.layer = 'CRS_INFO'
                     except Exception as e:
-                        print(f"Could not add CRS information: {str(e)}")
-
+                        logging.info(f"Could not add CRS information: {str(e)}")
             # Convert each geometry to DXF entities with proper layer assignment
             for geom in self.masks_gdf.geometry:
                 if geom.geom_type == 'Polygon':
@@ -6936,7 +5920,7 @@ class SatelliteImageApp(QMainWindow):
                 "Export Error", 
                 f"Failed to export AutoCAD file:\n{str(e)}"
             )
-            print(f"Error: {traceback.format_exc()}")
+            logging.info(f"Error: {traceback.format_exc()}")
             return False
     
     def export_raw_masks(self):
@@ -6945,6 +5929,9 @@ class SatelliteImageApp(QMainWindow):
             # Verify an image is loaded with proper profile data
             if not hasattr(self, 'profile') or not hasattr(self, 'image'):
                 QMessageBox.warning(self, "Warning", "No image has been loaded")
+                return
+            if not getattr(self, 'masks', None):
+                QMessageBox.warning(self, "No segments", "Run Segment Anything first: there are no masks to export.")
                 return
 
             # Create mask image with uint16 dtype
@@ -7052,8 +6039,7 @@ class SatelliteImageApp(QMainWindow):
                 "Export Error", 
                 f"Failed to export masks:\n{str(e)}\n\n{traceback.format_exc()}"
             )
-            print(f"Error: {traceback.format_exc()}")
-
+            logging.info(f"Error: {traceback.format_exc()}")
     def auto_classify_by_size(self):
         """Advanced automatic size-based classification using statistical analysis"""
         if not hasattr(self, 'masks') or not self.masks:
@@ -7170,7 +6156,6 @@ class SatelliteImageApp(QMainWindow):
             QMessageBox.critical(self, "Error", f"Position classification failed: {str(e)}")
 
 
-
     def generate_distinct_color(self, index):
         """Generate distinct colors for different classes"""
         hues = np.linspace(0, 1, 8, endpoint=False)  # 8 distinct hues
@@ -7189,8 +6174,7 @@ class SatelliteImageApp(QMainWindow):
             "Max area": np.max(areas),
             "Standard deviation": np.std(areas)
         }
-        print("Classification Statistics:", stats)
-
+        logging.info("Classification statistics: %s", stats)
     def log_position_stats(self, positions, labels):
         """Log spatial distribution statistics"""
         unique, counts = np.unique(labels, return_counts=True)
@@ -7199,14 +6183,17 @@ class SatelliteImageApp(QMainWindow):
             "Isolated masks": counts[-1] if -1 in unique else 0,
             "Region distribution": dict(zip(unique, counts))
         }
-        print("Position Statistics:", stats)
-
-    def _add_class_to_combobox(self, name, value):
+        logging.info("Position statistics: %s", stats)
+    def _add_class_to_combobox(self, name, value, color=None):
         """Helper to add a new class to the combo box and tracking structures."""
         if name not in self.classes:
             self.classes[name] = value
             self.class_combo.addItem(name)
             self.class_masks[name] = np.zeros_like(self.masks[0]['segmentation'], dtype=bool)
+            if color is not None:
+                if not hasattr(self, 'class_colors'):
+                    self.class_colors = {}
+                self.class_colors[name] = color
 
     def classify_automatic_masks(self):
         """Improved classification dialog with batch operations."""
@@ -7317,6 +6304,32 @@ class SatelliteImageApp(QMainWindow):
         else:
             self.class_masks = None
 
+
+
+    def _load_sam_model(self):
+        """Return (model, device) or (None, None). Asks for the .pth file once and remembers it."""
+        if not SAM_AVAILABLE:
+            QMessageBox.warning(self, "SAM not installed",
+                                "SAM needs PyTorch and segment-anything:\n\n"
+                                "    pip install torch segment-anything\n\n"
+                                "Weights: https://github.com/facebookresearch/segment-anything#model-checkpoints")
+            return None, None
+        settings = self._snap_qsettings()
+        model_type = settings.value("sam/model_type", "vit_h", type=str)
+        ckpt = resources.find_sam_checkpoint(model_type, settings.value("sam/checkpoint", "", type=str) or None)
+        if ckpt is None:
+            ckpt, _ = QFileDialog.getOpenFileName(
+                self, "Select SAM checkpoint (sam_vit_h / vit_l / vit_b .pth)", "", "PyTorch weights (*.pth)")
+            if not ckpt:
+                return None, None
+        model_type = resources.model_type_from_filename(ckpt) or model_type
+        settings.setValue("sam/checkpoint", ckpt)
+        settings.setValue("sam/model_type", model_type)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        sam = sam_model_registry[model_type](checkpoint=ckpt)
+        sam.to(device=device)
+        return sam, device
+
     def sam_segmentation(self):
         """Perform SAM segmentation with options for classification or raw export."""
         if not hasattr(self, 'image'):
@@ -7332,13 +6345,11 @@ class SatelliteImageApp(QMainWindow):
             progress.show()
             QApplication.processEvents()
             
-            # Initialize SAM model
-            model_type = "vit_h"
-            sam_checkpoint = "d:\\Python_Codes\\sam_vit_h_4b8939.pth"
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            
-            sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
-            sam.to(device=device)
+            # Initialize SAM model (weights located via settings / SAM_CHECKPOINT_DIR / ./models)
+            sam, device = self._load_sam_model()
+            if sam is None:
+                progress.close()
+                return
             
             # Prepare image
             if len(self.image.shape) == 3 and self.image.shape[0] == 3:
@@ -7388,9 +6399,7 @@ class SatelliteImageApp(QMainWindow):
                 "Segmentation Error", 
                 f"Failed to perform SAM segmentation:\n{str(e)}"
             )
-            print(f"Error: {traceback.format_exc()}")
-    
-    
+            logging.info(f"Error: {traceback.format_exc()}")
     def show_automatic_masks(self, image, masks):
         """Display the automatically generated masks with proper figure management."""
         # Close any existing figure
@@ -7442,26 +6451,42 @@ class SatelliteImageApp(QMainWindow):
         if self.current_layer:
             try:
                 plt.close(self.current_layer)
-            except:
+            except Exception:
                 pass
             self.current_layer = None
         self.current_canvas = None
         self.figure_initialized = False
 
-    def layer_switched_handler(self):
-        """Handle layer switching events."""
-        self.cleanup_figures()
         # Your existing layer switching code here
 
     def closeEvent(self, event):
-        """Handle application closing."""
-        self.cleanup_figures()
+        """Handle application closing: stop background jobs first, a running QThread must never be destroyed."""
+        for attr, th in list(vars(self).items()):
+            if not isinstance(th, QThread):
+                continue
+            try:
+                if hasattr(th, 'cancel'):
+                    th.cancel()
+                if th.isRunning():
+                    th.quit()
+                    if not th.wait(3000):
+                        logging.warning("Background job %s did not stop in time", attr)
+            except RuntimeError:      # underlying C++ object already deleted
+                pass
+        try:
+            self.cleanup_figures()
+        except Exception:
+            logging.exception("cleanup_figures failed")
         event.accept()
         
 
 
     def assign_current_mask(self):
         """Assign current segment to selected class."""
+        if not getattr(self, 'masks', None) or not isinstance(getattr(self, 'class_masks', None), dict) \
+                or not hasattr(self, 'class_combo'):
+            QMessageBox.warning(self, "No segments", "Run automatic segmentation and open the classification dialog first.")
+            return
         class_name = self.class_combo.currentText()
         if not class_name:
             QMessageBox.warning(self, "No Class", "Please select a class first.")
@@ -7477,6 +6502,10 @@ class SatelliteImageApp(QMainWindow):
 
     def assign_all_masks(self):
         """Assign all segments to selected class with proper message box usage."""
+        if not getattr(self, 'masks', None) or not isinstance(getattr(self, 'class_masks', None), dict) \
+                or not hasattr(self, 'class_combo'):
+            QMessageBox.warning(self, "No segments", "Run automatic segmentation and open the classification dialog first.")
+            return
         class_name = self.class_combo.currentText()
         if not class_name:
             QMessageBox.warning(self, "No Class", "Please select a class first.")
@@ -7522,6 +6551,8 @@ class SatelliteImageApp(QMainWindow):
 
     def update_mask_display(self, delta=0):
         """Update the displayed segment with navigation."""
+        if not getattr(self, 'masks', None):
+            return
         new_index = self.current_mask_index + delta
         if 0 <= new_index < len(self.masks):
             self.current_mask_index = new_index
@@ -7705,8 +6736,7 @@ class SatelliteImageApp(QMainWindow):
                 "Generation Error",
                 f"Failed to generate landuse map:\n{str(e)}"
             )
-            print(f"Error: {traceback.format_exc()}")
-
+            logging.info(f"Error: {traceback.format_exc()}")
     def display_landuse_map_with_legend(self, landuse_map):
         """Display map with legend showing class names and colors."""
         plt.figure(figsize=(14, 10))
@@ -7717,11 +6747,12 @@ class SatelliteImageApp(QMainWindow):
         
         # Create colormap and legend elements
         colors = plt.cm.viridis(np.linspace(0, 1, len(unique_classes)))
-        cmap = plt.cm.colors.ListedColormap(colors)
-        norm = plt.cm.colors.BoundaryNorm(np.arange(len(unique_classes)+1)-0.5, len(unique_classes))
+        cmap = mcolors.ListedColormap(colors)
+        norm = mcolors.BoundaryNorm(np.arange(len(unique_classes)+1)-0.5, len(unique_classes))
         
-        # Plot the map
-        img = plt.imshow(landuse_map, cmap = cmap, norm=norm)
+        # Plot the map in its real coordinates
+        img, _spec = georef.draw_raster(plt.gca(), landuse_map, self._inherited_profile(landuse_map.shape),
+                                        cmap=cmap, norm=norm, interpolation='nearest')
         
         # Create legend patches
         patches = [mpatches.Patch(color=colors[i], 
@@ -7751,10 +6782,11 @@ class SatelliteImageApp(QMainWindow):
             unique_classes = sorted(list(set(self.classes.values())))
             class_names = {v:k for k,v in self.classes.items()}
             colors = plt.cm.viridis(np.linspace(0, 1, len(unique_classes)))
-            cmap = plt.cm.colors.ListedColormap(colors)
-            norm = plt.cm.colors.BoundaryNorm(np.arange(len(unique_classes)+1)-0.5, len(unique_classes))
+            cmap = mcolors.ListedColormap(colors)
+            norm = mcolors.BoundaryNorm(np.arange(len(unique_classes)+1)-0.5, len(unique_classes))
             
-            img = ax.imshow(landuse_map, cmap=cmap, norm=norm)
+            lu_profile = self._inherited_profile(landuse_map.shape)
+            img, _spec = georef.draw_raster(ax, landuse_map, lu_profile, cmap=cmap, norm=norm, interpolation='nearest')
             
             # Create and add legend
             patches = [mpatches.Patch(color=colors[i], 
@@ -7774,22 +6806,10 @@ class SatelliteImageApp(QMainWindow):
             plt.savefig(output_path, dpi=300, bbox_inches='tight')
             plt.close(fig)
 
-            # Save GeoTIFF if geospatial data exists
-            if hasattr(self, 'original_geotransform'):
+            # GeoTIFF with the real grid of the source image (only when the image is georeferenced)
+            if georef.is_georeferenced(*georef.profile_transform_crs(lu_profile)):
                 geotiff_path = "landuse_classification.tif"
-                with rasterio.open(
-                    geotiff_path,
-                    'w',
-                    driver='GTiff',
-                    height=landuse_map.shape[0],
-                    width=landuse_map.shape[1],
-                    count=1,
-                    dtype=landuse_map.dtype,
-                    crs=getattr(self, 'original_crs', None),
-                    transform=getattr(self, 'original_geotransform', None),
-                    nodata=0
-                ) as dst:
-                    dst.write(landuse_map, 1)
+                georef.write_geotiff(geotiff_path, landuse_map, lu_profile, nodata=0)
                 output_path += f"\nand {geotiff_path}"
 
             return output_path
@@ -7803,103 +6823,6 @@ class SatelliteImageApp(QMainWindow):
             return output_path if output_path else None
     
 #$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$44
-    def detect_changes(self):
-        progress = None
-        try:
-            QMessageBox.information(None, "Load Image", "Please load the first image.")
-            progress = self.show_loading("Loading first image")
-            file1, _ = QFileDialog.getOpenFileName(None, "Select Base Image", "", "GeoTIFF Files (*.tif *.tiff);;All Files (*)")
-            if not file1: 
-                return
-            img1, prof1 = ImageProcessor.load_image(file1)
-            progress.close()
-
-            QMessageBox.information(None, "Load Image", "Please load the second image.")
-            progress = self.show_loading("Loading second image")
-            file2, _ = QFileDialog.getOpenFileName(None, "Select Second Image", "", "GeoTIFF Files (*.tif *.tiff);;All Files (*)")
-            if not file2: 
-                return
-            img2, prof2 = ImageProcessor.load_image(file2)
-            progress.close()
-
-            if prof1['crs'] != prof2['crs']:
-                QMessageBox.critical(None, "Error", "Coordinate reference systems do not match!")
-                return
-
-            progress = self.show_loading("Analyzing changes...")
-            start_time = time.time()
-            self.change_result = ImageClassifier.detect_changes(img1, img2)
-            self.profile = prof1
-            progress.close()
-
-            self.display_change_map(self.change_result[0])
-
-            (total_area_of_change, percentage_change, change_intensity,
-            low_change_percentage, medium_change_percentage, high_change_percentage) = ImageProcessor.calculate_statistics(self.change_result[0])
-
-            stats_text = f"""
-            <h4 style="color:#3498db;">Change Detection Statistics</h4>
-            <table class="metadata-table">
-                <tr><td><b>Total Area of Change</b></td><td>{total_area_of_change} pixels</td></tr>
-                <tr><td><b>Percentage Change</b></td><td>{percentage_change:.2f}%</td></tr>
-                <tr><td><b>Average Change Intensity</b></td><td>{change_intensity:.4f}</td></tr>
-                <tr><td><b>Low Change (0-33%)</b></td><td>{low_change_percentage:.2f}%</td></tr>
-                <tr><td><b>Medium Change (33-66%)</b></td><td>{medium_change_percentage:.2f}%</td></tr>
-                <tr><td><b>High Change (66-100%)</b></td><td>{high_change_percentage:.2f}%</td></tr>
-            </table>
-            """
-            self.info_box.setHtml(stats_text)
-
-            self.stats_label.setVisible(False)
-
-            self.ask_to_save_change_results()
-
-            self.add_layer_to_list(file1, img1, prof1, is_change_map=False)
-            self.add_layer_to_list(file2, img2, prof2, is_change_map=False)
-
-            change_map_name = "Change Map"
-            self.add_layer_to_list(change_map_name, self.change_result[0], prof1, is_change_map=True)
-
-        except Exception as e:
-            if progress: progress.close()
-            QMessageBox.critical(None, "Error", f"Failed to detect changes: {str(e)}")
-
-    def display_change_map(self, change_map):
-        self.ax.clear()
-        if hasattr(self, 'cbar'):
-            self.cbar.remove()
-        cax = self.ax.imshow(change_map, cmap='viridis')
-        divider = make_axes_locatable(self.ax)
-        cbar_ax = divider.append_axes("right", size="5%", pad=0.05)
-        self.cbar = self.fig.colorbar(cax, cax=cbar_ax, orientation='vertical', label='Change Intensity')
-        self.canvas.draw()
-        self.stats_label.setVisible(True)
-
-    def show_loading(self, message):
-        progress = QProgressDialog(message, "Cancel", 0, 100, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setValue(0)
-        return progress
-
-    def ask_to_save_change_results(self):
-        save_reply = QMessageBox.question(
-            self, "Save Changes", "Do you want to save the change detection results?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
-        )
-        if save_reply == QMessageBox.Yes:
-            self.save_change_results()
-
-    def save_change_results(self):
-        if hasattr(self, 'change_result'):
-            file_name, _ = QFileDialog.getSaveFileName(
-                self, "Save Change Detection Results", "", "GeoTIFF Files (*.tif);;All Files (*)"
-            )
-            if file_name:
-                try:
-                    self.image_processor.save_image(self.change_result, self.profile, file_name)
-                    QMessageBox.information(self, "Success", "Change detection results saved successfully.")
-                except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Failed to save change detection results: {str(e)}")
 
     def add_layer_to_list(self, name, image, profile, is_change_map=False):
         layer_data = {
@@ -7996,81 +6919,6 @@ class SatelliteImageApp(QMainWindow):
         QMessageBox.information(self, "Help Guide", help_message)
 
 
-
-    def classify_with_random_forest(self):
-        """
-        Classifies the image using Random Forest.
-        """
-        if hasattr(self, 'image'):  # التأكد من وجود صورة نشطة
-            try:
-                # Ask the user for the number of classes
-                num_classes, ok = QInputDialog.getInt(self, "Number of Classes", "Enter the number of classes:", 2, 2, 10, 1)
-                if not ok:
-                    return  # User canceled the input
-
-                # Prepare the image for classification
-                flattened_image = self.image_classifier.preprocess_image_for_classification(self.image)
-                
-                # Create random labels based on the number of classes
-                labels = np.random.randint(0, num_classes, flattened_image.shape[0])
-
-                # Classify the image using Random Forest
-                model, y_pred, accuracy = self.image_classifier.classify_random_forest(flattened_image, labels)
-                
-                # Reshape the predictions to match the original image dimensions
-                if self.image.shape[0] == 3:  # RGB image
-                    height, width = self.image.shape[1], self.image.shape[2]
-                else:  # Grayscale image
-                    height, width = self.image.shape[1], self.image.shape[2]
-                
-                classified_image = y_pred.reshape(height, width)
-                self.classified_image = classified_image[np.newaxis, ...]  # تحديث الصورة المصنفة
-                
-                # Display the classified image
-                self.display_classified_image(classified_image)
-                
-                QMessageBox.information(self, "Classification Result", f"Random Forest Accuracy: {accuracy:.2f}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to classify image: {str(e)}")
-
-    def classify_with_svm(self):
-        """
-        Classifies the image using SVM.
-        """
-        if hasattr(self, 'image'):  # التأكد من وجود صورة نشطة
-            try:
-                # Ask the user for the number of classes
-                num_classes, ok = QInputDialog.getInt(self, "Number of Classes", "Enter the number of classes:", 2, 2, 10, 1)
-                if not ok:
-                    return  # User canceled the input
-
-                # Prepare the image for classification
-                flattened_image = self.image_classifier.preprocess_image_for_classification(self.image)
-                
-                # Create random labels based on the number of classes
-                labels = np.random.randint(0, num_classes, flattened_image.shape[0])
-
-                # Classify the image using SVM
-                model, y_pred, accuracy = self.image_classifier.classify_svm(flattened_image, labels)
-                
-                # Reshape the predictions to match the original image dimensions
-                if self.image.shape[0] == 3:  # RGB image
-                    height, width = self.image.shape[1], self.image.shape[2]
-                else:  # Grayscale image
-                    height, width = self.image.shape[1], self.image.shape[2]
-                
-                classified_image = y_pred.reshape(height, width)
-                self.classified_image = classified_image[np.newaxis, ...]  # تحديث الصورة المصنفة
-                
-                # Display the classified image
-                self.display_classified_image(classified_image)
-                
-                QMessageBox.information(self, "Classification Result", f"SVM Accuracy: {accuracy:.2f}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to classify image: {str(e)}")
-                
-    
-    #Canny edge detection
     def canny_edge_detection(self):
         if hasattr(self, 'image'):
             try:
@@ -8280,70 +7128,11 @@ class SatelliteImageApp(QMainWindow):
     #Clips a portion of the loaded raster image based on user-defined bounding box.
     
     
-    def check_required_bands(self, required_bands):
-        missing = []
-        for band in required_bands:
-            if band not in self.loaded_bands:
-                missing.append(f"Band {band} ({self.get_band_name(band)})")
-        
-        if missing:
-            QMessageBox.critical(
-                self, 
-                "نطاقات مفقودة",
-                f"الرجاء تحميل النطاقات التالية أولاً:\n{', '.join(missing)}"
-            )
-            return False
-        return True
  
        
     #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
    
     
-    def calculate_spectral_index(self, index_name, required_bands, calculation_function, cmap):
-        """
-        دالة عامة لحساب المؤشرات الطيفية.
-        
-        :param index_name: اسم المؤشر (مثل "NDVI").
-        :param required_bands: قائمة بأسماء الأشرطة المطلوبة (مثل ["NIR Band", "Red Band"]).
-        :param calculation_function: الدالة المستخدمة لحساب المؤشر (مثل calculate_ndvi).
-        :param cmap: تدرج الألوان المستخدم لعرض المؤشر (مثل 'RdYlGn' لـ NDVI).
-        """
-        try:
-            # إخبار المستخدم بالأشرطة المطلوبة
-            band_list = "\n".join([f"{i+1}. {band}" for i, band in enumerate(required_bands)])
-            QMessageBox.information(self, f"Load Bands for {index_name}", 
-                f"To calculate {index_name}, please load the following bands:\n{band_list}")
-
-            # تحميل الأشرطة المطلوبة
-            bands = {}
-            for band_name in required_bands:
-                file_name, _ = QFileDialog.getOpenFileName(self, f"Load {band_name}", "", "GeoTIFF Files (*.tif *.tiff);;All Files (*)")
-                if not file_name:
-                    return
-                band_data, profile = self.image_processor.load_image(file_name)
-                bands[band_name] = band_data
-                self.add_layer_to_list(band_name, band_data, profile)
-
-            # التأكد من تطابق أبعاد الأشرطة
-            shapes = [band.shape for band in bands.values()]
-            if len(set(shapes)) > 1:
-                QMessageBox.critical(self, "Error", "All bands must have the same dimensions!")
-                return
-
-            # حساب المؤشر
-            index_image = calculation_function(*bands.values())
-
-            # إضافة المؤشر إلى قائمة الطبقات
-            self.add_layer_to_list(index_name, index_image, profile)
-
-            # عرض المؤشر بألوان معبرة
-            self.display_raster_layer(index_image, index_name, cmap=cmap)
-
-            # عرض تقرير المؤشر
-            self.show_index_report(index_name, index_image)
-
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to calculate {index_name}: {str(e)}")
 
     
     #                  Band Combination
@@ -8414,7 +7203,7 @@ class SatelliteImageApp(QMainWindow):
             # تحميل الصورة
             with rasterio.open(file_name) as src:
                 image = src.read()  # قراءة جميع النطاقات
-                profile = src.profile  # الحصول على معلومات الملف
+                profile = dict(src.profile)  # الحصول على معلومات الملف
 
             # تخزين البيانات في self.layers
             layer_name = os.path.basename(file_name)
@@ -8496,26 +7285,6 @@ class SatelliteImageApp(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save {index_name} result: {str(e)}")   
 
-    def show_index_report(self, index_name, index_image):
-        """
-        عرض تقرير بسيط عن المؤشر الطيفي.
-        
-        :param index_name: اسم المؤشر (مثل "NDVI").
-        :param index_image: صورة المؤشر المحسوبة.
-        """
-        min_value = np.nanmin(index_image)
-        max_value = np.nanmax(index_image)
-        mean_value = np.nanmean(index_image)
-
-        report = f"""
-        <h4 style="color:#3498db;">{index_name} Report</h4>
-        <table class="metadata-table">
-            <tr><td><b>Minimum {index_name}</b></td><td>{min_value:.2f}</td></tr>
-            <tr><td><b>Maximum {index_name}</b></td><td>{max_value:.2f}</td></tr>
-            <tr><td><b>Mean {index_name}</b></td><td>{mean_value:.2f}</td></tr>
-        </table>
-        """
-        self.info_box.setHtml(report)
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    NDVI   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%      
     def load_and_calculate_ndvi(self):
         """
@@ -8666,7 +7435,7 @@ class SatelliteImageApp(QMainWindow):
                 raise ValueError(f"Dimension mismatch between SWIR1 Band ({swir1_band.shape}) and SWIR2 Band ({swir2_band.shape}).")
 
             # Calculate NDNI
-            ndni = self.image_classifier.calculate_ndwi(swir1_band, swir2_band)
+            ndni = self.image_classifier.calculate_ndni(swir1_band, swir2_band)
 
             # Display NDNI result
             if ndni is not None:
@@ -8832,68 +7601,15 @@ class SatelliteImageApp(QMainWindow):
         self.save_index_result(ndmi, self.profile, "NDMI")   
 
 
-
                 
-    def show_loading_message(self, message):
-        self.statusBar().showMessage(message)
-        self.progress_bar.setRange(0, 0)  # Indeterminate mode
-        self.progress_bar.setVisible(True)
 
-    def hide_loading_message(self):
-        self.statusBar().clearMessage()
-        self.progress_bar.setVisible(False)
     
     # دالة حساب NDWI
-    def calculate_ndwi(self):
-        band_info_green = ("Green", 3)
-        band_info_nir = ("Near Infrared (NIR)", 5)
-        
-        green = self.load_single_band(band_info_green)
-        nir = self.load_single_band(band_info_nir)
-        
-        if green and nir:
-            try:
-                ndwi_image = self.image_classifier.calculate_ndwi(green, nir)
-                self.image = ndwi_image
-                self.display_raster_layer(ndwi_image)
-                QMessageBox.information(self, "Success", "NDWI calculation completed successfully")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Calculation failed: {str(e)}")
 
-    def calculate_avi(self):
-        band_info_nir = ("Near Infrared (NIR)", 5)
-        band_info_red = ("Red", 4)
-        
-        nir = self.load_single_band(band_info_nir)
-        red = self.load_single_band(band_info_red)
-        
-        if nir and red:
-            try:
-                avi_image = self.image_classifier.calculate_avi(nir, red)
-                self.image = avi_image
-                self.display_raster_layer(avi_image)
-                QMessageBox.information(self, "Success", "AVI calculation completed successfully")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Calculation failed: {str(e)}")
 
                
 
     # دالة حساب NDMI
-    def calculate_ndmi(self):
-        band_info_nir = ("Near Infrared (NIR)", 5)
-        band_info_swir = ("SWIR 1", 6)
-        
-        nir = self.load_single_band(band_info_nir)
-        swir = self.load_single_band(band_info_swir)
-        
-        if nir and swir:
-            try:
-                ndmi_image = self.image_classifier.calculate_ndmi(nir, swir)
-                self.image = ndmi_image
-                self.display_raster_layer(ndmi_image)
-                QMessageBox.information(self, "Success", "NDMI calculation completed successfully")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Calculation failed: {str(e)}")
 
     def save_current_index(self):
         """حفظ المؤشر الحالي"""
@@ -8919,251 +7635,62 @@ class SatelliteImageApp(QMainWindow):
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Failed to save: {str(e)}")
 
-    def combine_bands(self):
-        if hasattr(self, 'image'):
-            try:
-                bands, ok = QInputDialog.getText(self, "Combine Bands", "Enter band indices (comma-separated):")
-                if ok:
-                    bands = list(map(int, bands.split(',')))
-                    combined_image = self.image_processor.combine_bands(self.image, bands)
-                    self.display_raster_layer(combined_image)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to combine bands: {str(e)}")
 
-    def insert_map_title(self):
-        # Check if an image is loaded
-        if hasattr(self, 'image') and self.image is not None:
-            try:
-                transform = self.profile['transform']
-                width = self.profile['width']
-                height = self.profile['height']
-                # Correct bounds order: [left, right, bottom, top]
-                bounds = [
-                    transform.c,  # left
-                    transform.c + width * transform.a,  # right
-                    transform.f + height * transform.e,  # bottom
-                    transform.f  # top
-                ]
-
-                self.ax.clear()
-                # Set a valid zoom level (e.g., 10)
-                ctx.add_basemap(
-                    self.ax,
-                    crs=self.profile['crs'],
-                    source=ctx.providers.OpenStreetMap.Mapnik,
-                    extent=bounds,
-                    zoom=10  # Set a valid zoom level
-                )
-
-                if self.image.shape[0] == 3:  # RGB image
-                    self.ax.imshow(self.image.transpose(1, 2, 0), extent=bounds)
-                else:  # Grayscale image
-                    self.ax.imshow(self.image[0], cmap='gray', extent=bounds)
-
-                # Add the map title
-                title, ok = QInputDialog.getText(self, "Insert Map Title", "Enter title:")
-                if ok and title:
-                    self.ax.set_title(title, fontsize=16, fontweight='bold')
-
-                self.canvas.draw()
-                QMessageBox.information(self, "Success", "Map title inserted successfully.")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to insert map title: {str(e)}")
-        else:
-            QMessageBox.warning(self, "Warning", "No image loaded.")
 
  
-    def insert_text(self):
-        """
-        إدراج نص عند إحداثيات محددة بالنقر.
-        """
-        try:
-            text, ok = QInputDialog.getText(self, "Insert Text", "Enter text:")
-            if ok:
-                color = QColorDialog.getColor(Qt.red, self, "Choose Text Color")
-                font, ok_font = QFontDialog.getFont(QFont("Arial", 12), self, "Choose Font")
-                
-                if color.isValid() and ok_font:
-                    x, ok_x = QInputDialog.getDouble(self, "X Coordinate", "Enter X coordinate:", 0, -10000, 10000, 2)
-                    y, ok_y = QInputDialog.getDouble(self, "Y Coordinate", "Enter Y coordinate:", 0, -10000, 10000, 2)
-                    
-                    if ok_x and ok_y:
-                        self.ax.text(
-                            x, y, text,
-                            fontsize=font.pointSize(),
-                            color=color.name(),
-                            fontfamily=font.family(),
-                            backgroundcolor='white'
-                        )
-                        self.canvas.draw()
-                        QMessageBox.information(self, "Success", "Text inserted successfully.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to insert text: {str(e)}")
     
-    def insert_legend(self):
-        """
-        إدراج مفتاح الخريطة.
-        """
-        try:
-            legend = self.ax.legend(loc='upper right')
-            legend.get_frame().set_facecolor('white')
-            self.canvas.draw()
-            QMessageBox.information(self, "Success", "Legend inserted successfully.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to insert legend: {str(e)}")
 
-    def insert_north_arrow(self):
-        """
-        إدراج سهم الشمال.
-        """
-        try:
-            x, ok_x = QInputDialog.getDouble(self, "X Coordinate", "Enter X coordinate for North Arrow:", 0, -10000, 10000, 2)
-            y, ok_y = QInputDialog.getDouble(self, "Y Coordinate", "Enter Y coordinate for North Arrow:", 0, -10000, 10000, 2)
-            
-            if ok_x and ok_y:
-                self.ax.annotate('N', xy=(x, y), xytext=(x, y+0.1),
-                                arrowprops=dict(facecolor='black', shrink=0.05))
-                self.canvas.draw()
-                QMessageBox.information(self, "Success", "North arrow inserted successfully.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to insert north arrow: {str(e)}")
 
-    def insert_grid(self):
-        """
-        إدراج شبكة الإحداثيات.
-        """
-        try:
-            self.ax.grid(True)
-            self.canvas.draw()
-            QMessageBox.information(self, "Success", "Grid inserted successfully.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to insert grid: {str(e)}")
 
-    def insert_scale_bar(self):
-        """
-        إدراج شريط مقياس الرسم.
-        """
-        try:
-            # إعداد الإحداثيات والمقياس
-            x, ok_x = QInputDialog.getDouble(self, "X Coordinate", "Enter X coordinate for Scale Bar:", 0, -10000, 10000, 2)
-            y, ok_y = QInputDialog.getDouble(self, "Y Coordinate", "Enter Y coordinate for Scale Bar:", 0, -10000, 10000, 2)
-            scale_length, ok_length = QInputDialog.getDouble(self, "Scale Length", "Enter length of Scale Bar (in map units):", 100, 1, 10000, 2)
-            
-            if ok_x and ok_y and ok_length:
-                # إعداد شريط مقياس الرسم
-                self.ax.plot([x, x + scale_length], [y, y], color='black', lw=2)
-                self.ax.plot([x, x], [y - 0.01 * scale_length, y + 0.01 * scale_length], color='black', lw=2)
-                self.ax.plot([x + scale_length, x + scale_length], [y - 0.01 * scale_length, y + 0.01 * scale_length], color='black', lw=2)
-                self.ax.text(x + scale_length / 2, y + 0.02 * scale_length, f'{scale_length} units', ha='center', va='bottom', fontsize=10, color='black')
+
+
                 
-                self.canvas.draw()
-                QMessageBox.information(self, "Success", "Scale bar inserted successfully.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to insert scale bar: {str(e)}")
-
-
-    def save_combined_layout(self):
-        """
-        تصدير تخطيط الخريطة الكامل.
-        """
-        try:
-            file_name, _ = QFileDialog.getSaveFileName(self, "Save Map Layout", "", "PDF Files (*.pdf)")
-            if file_name:
-                with PdfPages(file_name) as pdf:
-                    # حفظ الخريطة الحالية
-                    pdf.savefig(self.fig)
-                    # إضافة صفحة فارغة مع نصوص إضافية إذا لزم الأمر
-                    fig, ax = plt.subplots()
-                    ax.text(0.5, 0.5, 'Additional Information', transform=ax.transAxes, ha='center', va='center')
-                    pdf.savefig(fig)
-                    plt.close(fig)
-                QMessageBox.information(self, "Success", "Map layout saved successfully.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save map layout: {str(e)}")
-
-    def on_map_click(self, event):
-        """
-        تفعيل النقر على الخريطة لإدراج النص.
-        """
-        if event.inaxes == self.ax:
-            x, y = event.xdata, event.ydata
-            self.insert_text_at(x, y)
-
-    def insert_text_at(self, x, y):
-        """
-        إدراج نص عند إحداثيات محددة بالنقر.
-        """
-        try:
-            text, ok = QInputDialog.getText(self, "Insert Text", "Enter text:")
-            if ok:
-                color = QColorDialog.getColor(Qt.red, self, "Choose Text Color")
-                font, ok_font = QFontDialog.getFont(QFont("Arial", 12), self, "Choose Font")
-                
-                if color.isValid() and ok_font:
-                    self.ax.text(
-                        x, y, text,
-                        fontsize=font.pointSize(),
-                        color=color.name(),
-                        fontfamily=font.family(),
-                        backgroundcolor='white'
-                    )
-                    self.canvas.draw()
-                    QMessageBox.information(self, "Success", "Text inserted successfully.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to insert text: {str(e)}")
-
-    def save_layout(self):
-        """
-        حفظ التخطيط الكامل كصورة أو PDF.
-        """
-        if hasattr(self, 'image'):
-            try:
-                formats = "PDF (*.pdf);;PNG (*.png);;JPEG (*.jpg)"
-                file_name, selected_format = QFileDialog.getSaveFileName(
-                    self, "Save Layout", "", formats
-                )
-
-                if file_name:
-                    if selected_format == "PDF (*.pdf)":
-                        with PdfPages(file_name) as pdf:
-                            pdf.savefig(self.fig)
-                        QMessageBox.information(self, "Success", f"Layout saved as PDF: {file_name}")
-                    elif selected_format == "PNG (*.png)":
-                        self.fig.savefig(file_name, format='png', dpi=300)
-                        QMessageBox.information(self, "Success", f"Layout saved as PNG: {file_name}")
-                    elif selected_format == "JPEG (*.jpg)":
-                        self.fig.savefig(file_name, format='jpg', dpi=300)
-                        QMessageBox.information(self, "Success", f"Layout saved as JPEG: {file_name}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to save layout: {str(e)}")
-                
-    def save_combined_layout(self):
-        """حفظ الخريطة مع جميع العناصر المضافة"""
-        try:
-            file_name, _ = QFileDialog.getSaveFileName(
-                self, 
-                "حفظ الخريطة النهائية", 
-                "", 
-                "PDF (*.pdf);;PNG (*.png);;JPEG (*.jpg)"
-            )
-            
-            if file_name:
-                # حفظ الشكل كاملًا مع العناصر
-                self.fig.savefig(file_name, bbox_inches='tight', dpi=300)
-                QMessageBox.information(self, "Success", "File saved successfully!")
-                
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Save failed: {str(e)}")
             
 
 
 ########################################### Print
+    def export_map_dialog(self):
+        """Print-quality export: DPI, page size, clipping to a polygon or a drawn rectangle, title, scale bar, ..."""
+        try:
+            import mapexport_ui
+            if not any(isinstance(v, dict) and v.get('image') is not None for v in self.layers.values()):
+                QMessageBox.information(self, "Export Map", "Load a georeferenced raster first.")
+                return
+            old = getattr(self, '_export_dlg', None)
+            if old is not None:
+                try:
+                    old.reject()
+                except Exception:
+                    pass
+            self._export_dlg = mapexport_ui.ExportMapDialog(self)
+            self._export_dlg.setAttribute(Qt.WA_DeleteOnClose, False)
+            self._export_dlg.show()
+        except Exception as exc:
+            logging.exception("export_map_dialog failed")
+            QMessageBox.critical(self, "Export Map", f"Could not open the export dialog: {exc}")
+
+    def stack_bands_dialog(self):
+        """Merge single-band Sentinel-2 GeoTIFFs (B02,B03,B04,B08,B11) of one date into one multi-band file."""
+        try:
+            import bandstack
+            folder = QFileDialog.getExistingDirectory(
+                self, "Folder with the single-band files of ONE date (B02, B03, B04, B08, B11)")
+            if not folder:
+                return
+            rep = bandstack.stack_bands(folder)
+            QMessageBox.information(self, "Stack Bands", bandstack.format_report(rep))
+        except Exception as exc:
+            logging.exception("stack_bands_dialog failed")
+            QMessageBox.critical(self, "Stack Bands", str(exc))
+
     def print_image(self):
         """Handle both printing to physical printer and PDF export"""
         if not hasattr(self, 'ax') or not self.ax:
             QMessageBox.warning(self, "Error", "No display content available")
             return
 
+        if not self._printing_available():
+            return
         # Create printer with high resolution
         printer = QPrinter(QPrinter.HighResolution)
         
@@ -9237,466 +7764,350 @@ class SatelliteImageApp(QMainWindow):
                 painter.end()
             QMessageBox.critical(self, "Print Error", f"Failed to print: {str(e)}")
 
-    def _render_raster_to_pdf(self, painter, target_rect, layer_data):
-        """Render raster layer to PDF with proper scaling."""
-        image = layer_data['image']
-        
-        # Convert numpy array to QImage
-        if len(image.shape) == 3:  # Color image (RGB)
-            height, width, _ = image.shape
-            qimage = QImage(image.data, width, height, 3 * width, QImage.Format_RGB888).rgbSwapped()
-        else:  # Grayscale
-            height, width = image.shape
-            qimage = QImage(image.data, width, height, width, QImage.Format_Grayscale8)
-        
-        # Calculate scaling to fit content area while maintaining aspect ratio
-        img_ratio = width / height
-        target_ratio = target_rect.width() / target_rect.height()
-        
-        if img_ratio > target_ratio:
-            # Image is wider than target area
-            scale = target_rect.width() / width
-        else:
-            # Image is taller than target area
-            scale = target_rect.height() / height
-        
-        scaled_width = width * scale
-        scaled_height = height * scale
-        
-        # Center the image
-        x = target_rect.x() + (target_rect.width() - scaled_width) / 2
-        y = target_rect.y() + (target_rect.height() - scaled_height) / 2
-        
-        # Draw the image
-        painter.drawImage(QRectF(x, y, scaled_width, scaled_height), qimage)
-
-    def _render_vector_to_pdf(self, painter, target_rect, layer_data):
-        """Render vector layer to PDF with proper scaling."""
-        gdf = layer_data['gdf']
-        if len(gdf) == 0:
-            return
-        
-        # Get layer bounds with padding
-        bounds = gdf.total_bounds
-        width = max(bounds[2] - bounds[0], 1.0)
-        height = max(bounds[3] - bounds[1], 1.0)
-        
-        # If all features are at same point, create reasonable bounds
-        if width == 1.0 and height == 1.0:
-            width, height = 100.0, 100.0
-            bounds = (bounds[0]-50, bounds[1]-50, bounds[0]+50, bounds[1]+50)
-        
-        # Calculate scale to fit content area
-        x_scale = target_rect.width() / width
-        y_scale = target_rect.height() / height
-        scale = min(x_scale, y_scale)
-        
-        # Calculate offset to center content
-        x_offset = target_rect.x() - (bounds[0] * scale)
-        y_offset = target_rect.y() - (bounds[1] * scale)
-        
-        # Set up styling
-        color = QColor(layer_data.get('color', '#FF0000'))
-        line_width = layer_data.get('line_width', 1.0)
-        point_size = layer_data.get('point_size', 5)
-        
-        # Draw each feature type
-        for geom in gdf.geometry:
-            if geom.geom_type in ['Polygon', 'MultiPolygon']:
-                self._draw_pdf_polygon(painter, geom, color, line_width, scale, x_offset, y_offset)
-            elif geom.geom_type in ['LineString', 'MultiLineString']:
-                self._draw_pdf_line(painter, geom, color, line_width, scale, x_offset, y_offset)
-            elif geom.geom_type in ['Point', 'MultiPoint']:
-                self._draw_pdf_point(painter, geom, color, point_size, scale, x_offset, y_offset)
-
-    def _draw_pdf_polygon(self, painter, geom, color, line_width, scale, x_offset, y_offset):
-        """Draw polygon to PDF."""
-        pen = QPen(color, line_width)
-        brush = QBrush(color, Qt.SolidPattern)
-        painter.setPen(pen)
-        painter.setBrush(brush)
-        
-        if geom.geom_type == 'Polygon':
-            exterior = geom.exterior
-            points = [QPointF(x * scale + x_offset, y * scale + y_offset) 
-                    for x, y in zip(*exterior.xy)]
-            painter.drawPolygon(QPolygonF(points))
-        elif geom.geom_type == 'MultiPolygon':
-            for poly in geom.geoms:
-                exterior = poly.exterior
-                points = [QPointF(x * scale + x_offset, y * scale + y_offset) 
-                        for x, y in zip(*exterior.xy)]
-                painter.drawPolygon(QPolygonF(points))
-
-    def _draw_pdf_line(self, painter, geom, color, line_width, scale, x_offset, y_offset):
-        """Draw line to PDF."""
-        pen = QPen(color, line_width)
-        painter.setPen(pen)
-        
-        if geom.geom_type == 'LineString':
-            points = [QPointF(x * scale + x_offset, y * scale + y_offset) 
-                    for x, y in zip(*geom.xy)]
-            painter.drawPolyline(QPolygonF(points))
-        elif geom.geom_type == 'MultiLineString':
-            for line in geom.geoms:
-                points = [QPointF(x * scale + x_offset, y * scale + y_offset) 
-                        for x, y in zip(*line.xy)]
-                painter.drawPolyline(QPolygonF(points))
-
-    def _draw_pdf_point(self, painter, geom, color, point_size, scale, x_offset, y_offset):
-        """Draw point to PDF."""
-        pen = QPen(color, 1)
-        brush = QBrush(color)
-        painter.setPen(pen)
-        painter.setBrush(brush)
-        
-        if geom.geom_type == 'Point':
-            x = geom.x * scale + x_offset
-            y = geom.y * scale + y_offset
-            painter.drawEllipse(QPointF(x, y), point_size, point_size)
-        elif geom.geom_type == 'MultiPoint':
-            for point in geom.geoms:
-                x = point.x * scale + x_offset
-                y = point.y * scale + y_offset
-                painter.drawEllipse(QPointF(x, y), point_size, point_size)
-
-    def handle_print(self):
-        """Enhanced printing/PDF export with proper display of all elements"""
-        if not hasattr(self, 'ax') or not self.ax:
-            QMessageBox.warning(self, "Error", "No display area found")
-            return
-
-        # Create printer dialog with proper options
-        printer = QPrinter(QPrinter.HighResolution)
-        print_dialog = QPrintDialog(printer, self)
-        
-        # Configure dialog options
-        print_dialog.setOption(QPrintDialog.PrintToFile, True)
-        print_dialog.setOption(QPrintDialog.PrintSelection, False)
-        print_dialog.setOption(QPrintDialog.PrintPageRange, False)
-        print_dialog.setOption(QPrintDialog.PrintCollateCopies, True)
-        
-        if print_dialog.exec_() != QDialog.Accepted:
-            return
-
-        try:
-            # Create a temporary figure for printing
-            fig = Figure(figsize=(8, 6), dpi=100)
-            canvas = FigureCanvas(fig)
-            print_ax = fig.add_subplot(111)
-            
-            # Copy all elements from main display to print figure
-            self._copy_display_elements(self.ax, print_ax)
-            
-            # Adjust layout
-            fig.tight_layout()
-            
-            # Render to printer
-            painter = QPainter()
-            if painter.begin(printer):
-                # Calculate scale factor
-                page_rect = printer.pageRect()
-                scale = min(
-                    page_rect.width() / canvas.width(),
-                    page_rect.height() / canvas.height()
-                )
-                
-                # Center the output
-                x = (page_rect.width() - (canvas.width() * scale)) / 2
-                y = (page_rect.height() - (canvas.height() * scale)) / 2
-                
-                # Render the figure
-                canvas.render(
-                    painter,
-                    QRectF(x, y, canvas.width() * scale, canvas.height() * scale)
-                )
-                painter.end()
-                
-                if printer.outputFormat() == QPrinter.PdfFormat:
-                    QMessageBox.information(
-                        self, "PDF Exported", 
-                        f"PDF saved to:\n{printer.outputFileName()}"
-                    )
-                else:
-                    QMessageBox.information(
-                        self, "Print Sent", 
-                        "Content sent to printer successfully"
-                    )
-            else:
-                QMessageBox.warning(self, "Error", "Could not start printing")
-                
-        except Exception as e:
-            QMessageBox.critical(
-                self, "Print Error", 
-                f"Failed to generate print output: {str(e)}"
-            )
-
-    def _copy_display_elements(self, source_ax, target_ax):
-        """Copy all visible elements from source to target axes"""
-        # Copy the main image or vector layer
-        for artist in source_ax.get_children():
-            if isinstance(artist, (QuadMesh, PathCollection, Line2D, Polygon)):
-                target_ax.add_artist(artist)
-        
-        # Copy the axis lines and labels
-        target_ax.set_xlim(source_ax.get_xlim())
-        target_ax.set_ylim(source_ax.get_ylim())
-        target_ax.set_xlabel(source_ax.get_xlabel())
-        target_ax.set_ylabel(source_ax.get_ylabel())
-        target_ax.set_title(source_ax.get_title())
-        
-        # Copy grid and ticks
-        target_ax.grid(source_ax.grid())
-        target_ax.set_xticks(source_ax.get_xticks())
-        target_ax.set_yticks(source_ax.get_yticks())
-        
-        # Copy any additional annotations
-        for text in source_ax.texts:
-            target_ax.text(
-                text.get_position()[0], text.get_position()[1],
-                text.get_text(),
-                fontsize=text.get_fontsize(),
-                color=text.get_color()
-            )
-
-
-
-
-
 
 ###################################################
  
-    def _draw_features(self, painter, gdf, feature_type, layer_data, bounds, x_scale, y_scale):
-        """Draw features of specific type with proper styling"""
-        color = QColor(layer_data.get('color', '#FF0000'))
-        
-        if feature_type == 'point':
-            pen = QPen(color, 1)
-            brush = QBrush(color)
-            point_size = layer_data.get('point_size', 5)
-            
-            for geom in gdf.geometry:
-                if geom.geom_type == 'Point':
-                    x = (geom.x - bounds[0]) * x_scale
-                    y = (geom.y - bounds[1]) * y_scale
-                    painter.setPen(pen)
-                    painter.setBrush(brush)
-                    painter.drawEllipse(QPointF(x, y), point_size, point_size)
-                elif geom.geom_type == 'MultiPoint':
-                    for point in geom.geoms:
-                        x = (point.x - bounds[0]) * x_scale
-                        y = (point.y - bounds[1]) * y_scale
-                        painter.drawEllipse(QPointF(x, y), point_size, point_size)
-        
-        elif feature_type == 'line':
-            pen = QPen(color, layer_data.get('line_width', 1.0))
-            painter.setPen(pen)
-            
-            for geom in gdf.geometry:
-                if geom.geom_type == 'LineString':
-                    points = [QPointF((x - bounds[0]) * x_scale, 
-                            (y - bounds[1]) * y_scale) for x, y in zip(*geom.xy)]
-                    painter.drawPolyline(*points)
-                elif geom.geom_type == 'MultiLineString':
-                    for line in geom.geoms:
-                        points = [QPointF((x - bounds[0]) * x_scale, 
-                                (y - bounds[1]) * y_scale) for x, y in zip(*line.xy)]
-                        painter.drawPolyline(*points)
-        
-        elif feature_type == 'polygon':
-            pen = QPen(color, layer_data.get('line_width', 1.0))
-            brush = QBrush(color, Qt.SolidPattern)
-            painter.setPen(pen)
-            painter.setBrush(brush)
-            
-            for geom in gdf.geometry:
-                if geom.geom_type == 'Polygon':
-                    exterior = geom.exterior
-                    polygon = QPolygonF([QPointF((x - bounds[0]) * x_scale, 
-                                    (y - bounds[1]) * y_scale) for x, y in zip(*exterior.xy)])
-                    painter.drawPolygon(polygon)
-                elif geom.geom_type == 'MultiPolygon':
-                    for poly in geom.geoms:
-                        exterior = poly.exterior
-                        polygon = QPolygonF([QPointF((x - bounds[0]) * x_scale, 
-                                                (y - bounds[1]) * y_scale) for x, y in zip(*exterior.xy)])
-                        painter.drawPolygon(polygon)
 
-    def _scale_and_draw(self, painter, printer, qimage):
-        """Scale and draw QImage to printer with error checking"""
-        try:
-            page_rect = printer.pageRect()
-            image_rect = qimage.rect()
-
-            # Ensure valid dimensions
-            if image_rect.width() <= 0 or image_rect.height() <= 0:
-                raise ValueError("Image has invalid dimensions")
-
-            # Calculate scale factors
-            x_scale = page_rect.width() / image_rect.width()
-            y_scale = page_rect.height() / image_rect.height()
-            scale = min(x_scale, y_scale)
-
-            # Calculate centered position
-            x_offset = (page_rect.width() - (image_rect.width() * scale)) / 2
-            y_offset = (page_rect.height() - (image_rect.height() * scale)) / 2
-
-            # Draw the image
-            painter.save()
-            painter.translate(x_offset, y_offset)
-            painter.scale(scale, scale)
-            painter.drawImage(0, 0, qimage)
-            painter.restore()
-            return True
-        except Exception as e:
-            raise Exception(f"Failed to scale and draw: {str(e)}")
            
+    def _printing_available(self):
+        """Qt's Windows print support can abort the whole process (native fatal error 0x80040155, which no Python
+        try/except can catch) when no printer driver is installed. Check first and tell the user instead."""
+        try:
+            has = bool(QPrinterInfo.availablePrinters())
+        except Exception:
+            has = False
+        if not has:
+            QMessageBox.information(self, "Printing",
+                                    "No printer is installed on this computer.\n"
+                                    "Install a printer (e.g. 'Microsoft Print to PDF') to use Print / Page Setup, "
+                                    "or use File > Save as image / PDF report.")
+        return has
+
     def page_setup(self):
         """Configure page settings"""
+        if not self._printing_available():
+            return
         printer = QPrinter()
         dialog = QPageSetupDialog(printer, self)
         dialog.exec_()
 
-    def batch_export(self):
-        """Export to multiple formats simultaneously"""
-        if hasattr(self, 'image'):
-            formats = ["PDF", "PNG", "JPEG", "GeoTIFF"]
-            selected_formats, ok = QInputDialog.getItem(
-                self, "Batch Export", "Select formats:", formats, 0, True
-            )
-            if ok and selected_formats:
-                folder = QFileDialog.getExistingDirectory(self, "Select Output Directory")
-                if folder:
-                    try:
-                        base_name = QInputDialog.getText(self, "Base Name", "Enter base filename:")[0]
-                        for fmt in selected_formats:
-                            fmt = fmt.lower()
-                            if fmt not in ['pdf', 'png', 'jpeg', 'jpg', 'geotiff']:
-                                QMessageBox.warning(self, "Unsupported Format", f"Format '{fmt}' is not supported.")
-                                continue
-                            path = f"{folder}/{base_name}.{fmt}"
-                            if fmt == "geotiff":
-                                self.image_processor.save_image(self.image, self.profile, path)
-                            else:
-                                self.fig.savefig(path, dpi=300, bbox_inches='tight')
-                        QMessageBox.information(self, "Success", "Batch export completed!")
-                    except Exception as e:
-                        QMessageBox.critical(self, "Error", f"Export failed: {str(e)}")
 
 
-    def calculate_ndni(self):
-        if hasattr(self, 'image'):
-            try:
-                ndni_image = self.image_classifier.calculate_ndni(self.image)
-                self.display_raster_layer(ndni_image)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to calculate NDNI: {str(e)}")
-
-    def calculate_ndwi(self):
-        if hasattr(self, 'image'):
-            try:
-                ndwi_image = self.image_classifier.calculate_ndwi(self.image)
-                self.display_raster_layer(ndwi_image)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to calculate NDWI: {str(e)}")        
-
-    def calculate_avi(self):
-        if hasattr(self, 'image'):
-            try:
-                avi_image = self.image_classifier.calculate_avi(self.image)
-                self.display_raster_layer(avi_image)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to calculate AVI: {str(e)}")
-
-    def calculate_ndmi(self):
-        if hasattr(self, 'image'):
-            try:
-                ndmi_image = self.image_classifier.calculate_ndmi(self.image)
-                self.display_raster_layer(ndmi_image)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to calculate NDMI: {str(e)}")
-
- 
-    
-    def detect_changes(self):
-        progress = None
+    # ======================================================================
+    # Supervised classification (RF / SVM) with real validation
+    # ======================================================================
+    def supervised_classification(self):
+        """Random Forest / SVM using labelled vector samples and an honest accuracy assessment."""
         try:
-            # تحميل الصور
-            QMessageBox.information(None, "Load Image", "Please load the first image.")
-            progress = self.show_loading("Loading first image")
-            file1, _ = QFileDialog.getOpenFileName(None, "Select Base Image", "", "GeoTIFF Files (*.tif *.tiff);;All Files (*)")
-            if not file1: 
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Supervised classification (Random Forest / SVM)")
+            form = QFormLayout(dlg)
+
+            def file_row(edit, title, filt, folder=False):
+                btn = QPushButton("Browse...")
+                row = QHBoxLayout(); row.addWidget(edit); row.addWidget(btn)
+                def pick():
+                    if folder:
+                        p = QFileDialog.getExistingDirectory(dlg, title, edit.text())
+                    else:
+                        p, _ = QFileDialog.getOpenFileName(dlg, title, edit.text(), filt)
+                    if p:
+                        edit.setText(p)
+                btn.clicked.connect(pick)
+                return row
+
+            raster_e = QLineEdit(getattr(self, 'input_file', '') or '')
+            train_e, val_e = QLineEdit(), QLineEdit()
+            field_e = QLineEdit("class")
+            out_e = QLineEdit(os.path.join(tempfile.gettempdir(), "SpaceGeoVision_classification"))
+            model_c = QComboBox()
+            model_c.addItems(["Random Forest", "SVM (RBF, tuned)", "SVM (linear, tuned)"])
+            trees = QSpinBox(); trees.setRange(10, 1000); trees.setValue(100)
+            block = QSpinBox(); block.setRange(5, 5000); block.setValue(100); block.setSuffix(" px")
+
+            form.addRow("Raster (multi-band GeoTIFF):", file_row(raster_e, "Raster", "GeoTIFF (*.tif *.tiff)"))
+            form.addRow("Training samples (vector):", file_row(train_e, "Training samples", "Vector (*.shp *.gpkg *.geojson)"))
+            form.addRow("Class field:", field_e)
+            form.addRow("Validation samples (optional):", file_row(val_e, "Validation samples", "Vector (*.shp *.gpkg *.geojson)"))
+            form.addRow("Model:", model_c)
+            form.addRow("Trees (RF):", trees)
+            form.addRow("Validation block size:", block)
+            form.addRow("Output folder:", file_row(out_e, "Output folder", "", folder=True))
+            form.addRow(QLabel("Without an independent validation layer, whole spatial blocks of the training\n"
+                               "samples are held out. Accuracy is never computed on training pixels."))
+            btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            btns.accepted.connect(dlg.accept); btns.rejected.connect(dlg.reject)
+            form.addRow(btns)
+            if dlg.exec_() != QDialog.Accepted:
                 return
-            img1, prof1 = ImageProcessor.load_image(file1)
-            progress.close()
+            for label, e in (("raster", raster_e), ("training samples", train_e)):
+                if not e.text().strip() or not os.path.isfile(e.text().strip()):
+                    raise ValueError(f"Please choose a valid {label} file.")
+            if val_e.text().strip() and not os.path.isfile(val_e.text().strip()):
+                raise ValueError("The validation file does not exist.")
+            model_key = {0: "rf", 1: "svm_rbf", 2: "svm_linear"}[model_c.currentIndex()]
+            cfg = supervised.ClassifierConfig(model=model_key, n_trees=trees.value(), block_px=block.value())
 
-            QMessageBox.information(None, "Load Image", "Please load the second image.")
-            progress = self.show_loading("Loading second image")
-            file2, _ = QFileDialog.getOpenFileName(None, "Select Second Image", "", "GeoTIFF Files (*.tif *.tiff);;All Files (*)")
-            if not file2: 
+            self._cls_progress = QProgressDialog("Starting...", None, 0, 100, self)
+            self._cls_progress.setWindowTitle("Supervised classification")
+            self._cls_progress.setWindowModality(Qt.WindowModal)
+            self._cls_progress.setMinimumDuration(0)
+            worker = FuncWorker(
+                lambda progress: supervised.run_supervised(
+                    raster_e.text().strip(), train_e.text().strip(), field_e.text().strip(), out_e.text().strip(),
+                    cfg, val_e.text().strip() or None, progress=progress))
+            worker.progress.connect(lambda v, m: (self._cls_progress.setValue(v), self._cls_progress.setLabelText(m)))
+            worker.done.connect(self._on_supervised_done)
+            worker.failed.connect(lambda m: (self._cls_progress.close(), self.show_error(f"Classification failed:\n{m}")))
+            self._cls_worker = worker
+            worker.start()
+        except Exception as exc:
+            self.show_error(f"Cannot start classification: {exc}")
+
+    def _on_supervised_done(self, res):
+        self._cls_progress.close()
+        classified = res["classified"]
+        self.classified_image = classified[np.newaxis, ...]
+        self.profile = res["profile"]
+        self.classified_profile = res["profile"]
+        names = dict(res["evaluation"].names)
+        # The result becomes a layer of its own (real grid), so the cursor read-out shows map coordinates and class
+        layer_name = os.path.splitext(os.path.basename(res["classified_tif"]))[0]
+        self.layers[layer_name] = {'image': self.classified_image, 'profile': dict(res["profile"]),
+                                   'file_name': res["classified_tif"], 'type': 'raster', 'cmap': 'viridis',
+                                   'class_names': names, 'classified': True, 'title': layer_name}
+        if not any(self.layer_list.item(i).text() == layer_name for i in range(self.layer_list.count())):
+            self.layer_list.addItem(QListWidgetItem(layer_name))
+        self.current_layer = layer_name
+        self.display_classified_image(classified, profile=res["profile"], names=names, title=layer_name)
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Accuracy assessment (held-out samples)")
+        dlg.setMinimumSize(760, 520)
+        lay = QVBoxLayout(dlg)
+        box = QTextEdit(); box.setReadOnly(True)
+        box.setFontFamily("Courier New"); box.setPlainText(res["report"] +
+            f"\n\nFiles:\n  {res['classified_tif']}\n  {res['confusion_csv']}\n  {res['report_txt']}\n  {res['provenance']}")
+        lay.addWidget(box)
+        ok = QDialogButtonBox(QDialogButtonBox.Ok); ok.accepted.connect(dlg.accept); lay.addWidget(ok)
+        dlg.exec_()
+
+    # ======================================================================
+    # Bi-temporal change detection (CVA with radiometric normalisation)
+    # ======================================================================
+    def _two_image_dialog(self, title, with_options):
+        """Guided dialog: EARLIER and LATER image. Returns (f1, f2, opts) or None if cancelled."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle(title)
+        dlg.setMinimumWidth(560)
+        outer = QVBoxLayout(dlg)
+        guide = QLabel(
+            "<b>Compare two images of the same area.</b><br>"
+            "1. Choose the <b>EARLIER</b> image (before the event).<br>"
+            "2. Choose the <b>LATER</b> image (after the event).<br>"
+            "Both must have the same grid (size, resolution, CRS) and the same bands. "
+            "Changes are reported as <i>later minus earlier</i>.")
+        guide.setWordWrap(True)
+        outer.addWidget(guide)
+        fields = {}
+
+        def add_row(key, label):
+            row = QHBoxLayout()
+            lbl = QLabel(label); lbl.setMinimumWidth(150)
+            edit = QLineEdit(); edit.setPlaceholderText("Click Browse… and select a GeoTIFF")
+            btn = QPushButton("Browse…")
+
+            def browse():
+                start = os.path.dirname(edit.text()) if edit.text() else ""
+                p, _ = QFileDialog.getOpenFileName(dlg, label, start, "GeoTIFF (*.tif *.tiff)")
+                if p:
+                    edit.setText(p)
+            btn.clicked.connect(browse)
+            row.addWidget(lbl); row.addWidget(edit, 1); row.addWidget(btn)
+            outer.addLayout(row)
+            fields[key] = edit
+        add_row('f1', "1) EARLIER (before):")
+        add_row('f2', "2) LATER (after):")
+
+        def swap_files():
+            a_, b_ = fields['f1'].text(), fields['f2'].text()
+            fields['f1'].setText(b_); fields['f2'].setText(a_)
+        swap = QPushButton("Swap the two images")
+        swap.clicked.connect(swap_files)
+        outer.addWidget(swap, 0, Qt.AlignLeft)
+        norm = meth = kspin = None
+        if with_options:
+            form = QFormLayout()
+            outer.addLayout(form)
+            norm = QCheckBox("Radiometric normalisation (recommended)"); norm.setChecked(True)
+            meth = QComboBox(); meth.addItems(["Robust sigma (k · σ)", "Otsu"])
+            kspin = QDoubleSpinBox(); kspin.setRange(1.0, 10.0); kspin.setValue(3.0); kspin.setSingleStep(0.5)
+            form.addRow("", norm); form.addRow("Threshold method:", meth); form.addRow("k (sigma units):", kspin)
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.button(QDialogButtonBox.Ok).setText("Run")
+        outer.addWidget(btns)
+
+        def check_and_accept():
+            p1, p2 = fields['f1'].text().strip(), fields['f2'].text().strip()
+            if not p1 or not p2:
+                QMessageBox.warning(dlg, title, "Please select both the EARLIER and the LATER image.")
+            elif not (os.path.isfile(p1) and os.path.isfile(p2)):
+                QMessageBox.warning(dlg, title, "One of the selected files does not exist.")
+            elif os.path.abspath(p1) == os.path.abspath(p2):
+                QMessageBox.warning(dlg, title, "The earlier and later images are the same file.")
+            else:
+                dlg.accept()
+        btns.accepted.connect(check_and_accept); btns.rejected.connect(dlg.reject)
+        if dlg.exec_() != QDialog.Accepted:
+            return None
+        opts = None
+        if with_options:
+            opts = dict(normalise=norm.isChecked(), method="sigma" if meth.currentIndex() == 0 else "otsu", k=kspin.value())
+        return fields['f1'].text().strip(), fields['f2'].text().strip(), opts
+
+    def change_sensitivity(self):
+        """How much does the reported change depend on the threshold k and on radiometric normalisation?"""
+        try:
+            picked = self._two_image_dialog("Change detection: sensitivity", with_options=False)
+            if picked is None:
                 return
-            img2, prof2 = ImageProcessor.load_image(file2)
-            progress.close()
+            f1, f2, _o = picked
 
-            # التحقق من نظام الإحداثيات
-            # if prof1['crs'] != prof2['crs']:
-            #     QMessageBox.critical(None, "Error", "Coordinate reference systems do not match!")
-            #     return
-            if prof1['crs'] != prof2['crs']:
-                QMessageBox.critical(self, "CRS Mismatch", 
-                    f"Coordinate reference systems do not match:\nImage 1 CRS: {prof1['crs']}\nImage 2 CRS: {prof2['crs']}" )
+            def job(progress):
+                progress(10, "Reading images")
+                img1, p1 = ImageProcessor.load_image(f1)
+                img2, p2 = ImageProcessor.load_image(f2)
+                change_detection.check_alignment(p1, p2)
+                progress(50, "Computing the sensitivity table")
+                return change_detection.change_sensitivity(img1.astype('float32'), img2.astype('float32'), nodata=p1.get('nodata'))
+            self._sens_progress = QProgressDialog("Starting...", None, 0, 100, self)
+            self._sens_progress.setWindowTitle("Sensitivity analysis")
+            self._sens_progress.setWindowModality(Qt.WindowModal)
+            self._sens_progress.setMinimumDuration(0)
+            worker = FuncWorker(job)
+            worker.progress.connect(lambda v, m: (self._sens_progress.setValue(v), self._sens_progress.setLabelText(m)))
+            worker.done.connect(self._on_change_sensitivity_done)
+            worker.failed.connect(lambda m: (self._sens_progress.close(), self.show_error(f"Sensitivity analysis failed:\n{m}")))
+            self._sens_worker = worker
+            worker.start()
+        except Exception as exc:
+            self.show_error(f"Sensitivity analysis failed: {exc}")
+
+    def _on_change_sensitivity_done(self, rows):
+        self._sens_progress.close()
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Change detection: sensitivity")
+        dlg.setMinimumSize(560, 380)
+        lay = QVBoxLayout(dlg)
+        box = QTextEdit(); box.setReadOnly(True); box.setFontFamily("Courier New")
+        box.setPlainText(change_detection.format_sensitivity(rows)); lay.addWidget(box)
+        ok = QDialogButtonBox(QDialogButtonBox.Ok); ok.accepted.connect(dlg.accept); lay.addWidget(ok)
+        dlg.exec_()
+
+    def detect_changes(self, control=False):
+        try:
+            picked = self._two_image_dialog("Change detection", with_options=True)
+            if picked is None:
                 return
+            f1, f2, opts = picked
 
-            # حساب التغير
-            progress = self.show_loading("Analyzing changes...")
-            start_time = time.time()
-            self.change_result = ImageClassifier.detect_changes(img1, img2)
-            self.profile = prof1  # استخدام بروفايل الصورة الأولى
-            progress.close()
+            def job(progress):
+                progress(10, "Reading images")
+                img1, p1 = ImageProcessor.load_image(f1)
+                img2, p2 = ImageProcessor.load_image(f2)
+                change_detection.check_alignment(p1, p2)
+                nodata = p1.get('nodata')
+                t = p1['transform']
+                area = abs(t.a * t.e) if (p1['crs'] is not None and not p1['crs'].is_geographic) else None
+                progress(50, "Analysing changes")
+                res = change_detection.detect_changes(img1.astype('float32'), img2.astype('float32'),
+                                                      nodata=nodata, pixel_area_m2=area, **opts)
+                return res, p1, f1, f2
+            self._chg_progress = QProgressDialog("Starting...", None, 0, 100, self)
+            self._chg_progress.setWindowTitle("Change detection")
+            self._chg_progress.setWindowModality(Qt.WindowModal)
+            self._chg_progress.setMinimumDuration(0)
+            self._chg_control = control is True
+            worker = FuncWorker(job)
+            worker.progress.connect(lambda v, m: (self._chg_progress.setValue(v), self._chg_progress.setLabelText(m)))
+            worker.done.connect(self._on_change_done)
+            worker.failed.connect(lambda m: (self._chg_progress.close(), self.show_error(f"Change detection failed:\n{m}")))
+            self._chg_worker = worker
+            worker.start()
+        except Exception as exc:
+            self.show_error(f"Change detection failed: {exc}")
 
-            # عرض خريطة التغير
-            self.display_change_map(self.change_result[0])
+    def _on_change_done(self, payload):
+        self._chg_progress.close()
+        res, prof, f1, f2 = payload
+        if getattr(self, '_chg_control', False):
+            s = res.stats
+            QMessageBox.information(
+                self, "False-alarm test",
+                f"{s['changed_percent']:.2f}% of the {s['valid_pixels']:,} valid pixels were flagged as change "
+                f"(threshold {res.threshold:.1f} sigma, {res.method}).\n\n"
+                "For two images that show NO real change, this is the false-alarm rate of the method with these settings.\n"
+                "If it is not close to 0, raise k, check co-registration and radiometry, or use images from the same season.\n\n"
+                + ("\n".join("WARNING: " + w for w in res.warnings) if res.warnings else ""))
+            self._chg_control = False
+            return
+        self.change_result = res
+        self.profile = prof
+        self.display_change_map(np.clip(res.magnitude, 0, 2 * res.threshold))
+        s = res.stats
+        rows = "".join(f"<tr><td><b>{change_detection.CLASS_NAMES[c]}</b></td><td>{s['counts'][c]:,} px</td>"
+                       f"<td>{s['percent'][c]:.2f}%</td></tr>" for c in (1, 2, 3))
+        area = f"<tr><td><b>Changed area</b></td><td colspan='2'>{s['changed_area_ha']:.2f} ha</td></tr>" if s['changed_area_ha'] is not None else ""
+        self.info_box.setHtml(
+            '<h4 style="color:#3498db;">Change detection (CVA, normalised)</h4>'
+            f"<table><tr><td><b>Threshold</b></td><td colspan='2'>{res.threshold:.2f} σ ({res.method})</td></tr>"
+            f"<tr><td><b>Valid pixels</b></td><td colspan='2'>{s['valid_pixels']:,} / {s['total_pixels']:,}</td></tr>"
+            f"{rows}{area}</table>"
+            '<p style="color:#c0392b"><b>Candidate change, not validated.</b> Use the menu <i>Validation</i> '
+            '(1. Create Sampling Points, 2. Compute Accuracy) and the <i>Sensitivity Analysis</i> / <i>False-Alarm Test</i> items.</p>')
+        if res.warnings:
+            QMessageBox.warning(self, "Check the result", "\n\n".join(res.warnings))
+        self.add_layer_to_list("Change magnitude", res.magnitude, prof, is_change_map=True)
+        self.ask_to_save_change_results()
 
-            # حساب الإحصائيات
-            (total_area_of_change, percentage_change, change_intensity,
-            low_change_percentage, medium_change_percentage, high_change_percentage) = ImageProcessor.calculate_statistics(self.change_result[0])
+    def ask_to_save_change_results(self):
+        if QMessageBox.question(self, "Save results", "Save magnitude, class map and report?",
+                                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
+            self.save_change_results()
 
-            # عرض الإحصائيات في الصندوق
-            stats_text = f"""
-            <h4 style="color:#3498db;">Change Detection Statistics</h4>
-            <table class="metadata-table">
-                <tr><td><b>Total Area of Change</b></td><td>{total_area_of_change} pixels</td></tr>
-                <tr><td><b>Percentage Change</b></td><td>{percentage_change:.2f}%</td></tr>
-                <tr><td><b>Average Change Intensity</b></td><td>{change_intensity:.4f}</td></tr>
-                <tr><td><b>Low Change (0-33%)</b></td><td>{low_change_percentage:.2f}%</td></tr>
-                <tr><td><b>Medium Change (33-66%)</b></td><td>{medium_change_percentage:.2f}%</td></tr>
-                <tr><td><b>High Change (66-100%)</b></td><td>{high_change_percentage:.2f}%</td></tr>
-            </table>
-            """
-            self.info_box.setHtml(stats_text)
+    def save_change_results(self):
+        try:
+            import rasterio
+            base, _ = QFileDialog.getSaveFileName(self, "Save change results (base name)", "", "GeoTIFF (*.tif)")
+            if not base:
+                return
+            base = os.path.splitext(base)[0]
+            res, prof = self.change_result, self.profile
+            for suffix, arr, dtype, nodata in (("_magnitude", res.magnitude, "float32", -9999.0),
+                                              ("_classes", change_detection.export_classes(res.classes), "uint8", 255)):
+                p = {k: v for k, v in prof.items() if k in ("crs", "transform", "width", "height")}
+                p.update(driver="GTiff", count=1, dtype=dtype, nodata=nodata, compress="lzw")
+                data = np.where(np.isfinite(arr), arr, nodata).astype(dtype) if dtype == "float32" else arr
+                with rasterio.open(base + suffix + ".tif", "w", **p) as dst:
+                    dst.write(data, 1)
+            with open(base + "_report.txt", "w", encoding="utf-8") as f:
+                f.write(change_detection.format_report(res))
+            self.show_status(f"Saved {base}_magnitude.tif, _classes.tif, _report.txt", 8000)
+            st = self._snap_qsettings()
+            st.setValue("val/raster", base + "_classes.tif"); st.setValue("val/groups", "change:2,3;no_change:1")
+            if QMessageBox.question(self, "Validation",
+                                    "Create validation sampling points for this change map now?\n"
+                                    "(Classes: 1 no change, 2 change, 3 strong change, 255 no data.\nYou can also do it later from the Validation menu.)",
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
+                self.validation_sample_points()
+        except Exception as exc:
+            self.show_error(f"Could not save change results: {exc}")
 
-            # إخفاء الإحصائيات القديمة بجوار الصورة
-            self.stats_label.setVisible(False)
-
-            # حفظ النتائج إذا طلب المستخدم
-            self.ask_to_save_change_results()
-
-            # إضافة الصور إلى قائمة الطبقات
-            self.add_layer_to_list(file1, img1, prof1, is_change_map=False)
-            self.add_layer_to_list(file2, img2, prof2, is_change_map=False)
-
-            # إضافة خريطة التغير إلى قائمة الطبقات
-            change_map_name = "Change Map"
-            self.add_layer_to_list(change_map_name, self.change_result[0], prof1, is_change_map=True)
-
-        except Exception as e:
-            if progress: progress.close()
-            QMessageBox.critical(None, "Error", f"Failed to detect changes: {str(e)}")
-
-    def display_change_map(self, change_map):
+    def display_change_map(self, change_map, profile=None):
         """
-        عرض خريطة التغير مع colorbar.
+        عرض خريطة التغير مع colorbar (في الإحداثيات الحقيقية للصورة).
         """
+        if profile is None:
+            profile = getattr(self, 'profile', None) or self._inherited_profile(np.shape(change_map))
         # مسح المحتوى السابق
         self.ax.clear()
         
@@ -9706,7 +8117,7 @@ class SatelliteImageApp(QMainWindow):
             delattr(self, 'cbar')
         
         # عرض خريطة التغير
-        cax = self.ax.imshow(change_map, cmap='viridis')
+        cax, _spec = georef.draw_raster(self.ax, change_map, profile, cmap='viridis')
         
         # إضافة colorbar
         divider = make_axes_locatable(self.ax)
@@ -9720,58 +8131,6 @@ class SatelliteImageApp(QMainWindow):
         self.stats_label.setVisible(True)
 
     
-    def ask_to_save_change_results(self):
-        reply = QMessageBox.question(None, "Save Results", "Do you want to save the change detection results?", QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            self.save_change_results()
-
-    def save_change_results(self):
-        try:
-            file_path, _ = QFileDialog.getSaveFileName(None, "Save Change Detection Results", "", "GeoTIFF Files (*.tif *.tiff);;All Files (*)")
-            if not file_path:
-                return
-            ImageProcessor.save_image(file_path, self.change_result, self.profile)
-            QMessageBox.information(None, "Success", "Change detection results saved successfully.")
-        except Exception as e:
-            QMessageBox.critical(None, "Error", f"Failed to save change detection results: {str(e)}")
-
-    def show_loading(self, message):
-        progress = QProgressDialog(message, None, 0, 0, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setCancelButton(None)  # إزالة زر الإلغاء
-        progress.show()
-        QApplication.processEvents()  # تحديث الواجهة
-        return progress
-
-    def ask_to_save_change_results(self):
-        reply = QMessageBox.question(self, 'Save Results', 'Do you want to save the change detection results?', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            self.save_change_results()
-
-    def save_change_results(self):
-        options = QFileDialog.Options()
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save Change Detection Results", "", "GeoTIFF Files (*.tif *.tiff);;All Files (*)", options=options)
-        if file_name:
-            # Ensure self.profile is a dictionary
-            profile_dict = dict(self.profile)
-            
-            # Save the image data without the legend or statistics
-            image_data = self.change_result[0]
-            
-            # Save the image data
-            ImageProcessor.save_image_oneBand(image_data, profile_dict, file_name)
-            QMessageBox.information(self, "Save Results", "Results saved successfully!")
-
-
-        def show_loading(self, message):
-        # Dummy implementation for showing a loading message
-            print(message)
-            return self
-
-        def close(self):
-            # Dummy implementation for closing the loading message
-            print("Loading complete")
-
 
     def raster_calculator(self):
         """Raster Calculator window with clickable layer list and save option"""
@@ -9816,18 +8175,6 @@ class SatelliteImageApp(QMainWindow):
         layer_name = f'"{item.text()}"'  # Maintain quoted layer names
         self.formula_edit.setText(f"{current_text} {layer_name}")
     
-    def validate_formula(self):
-        """Check formula syntax and layer availability"""
-        try:
-            formula = self.formula_edit.toPlainText()
-            # Temporary substitution for validation
-            test_formula = re.sub(r'"([^"]+)"', '1', formula)
-            parsed = ast.parse(test_formula, mode='eval')
-            QMessageBox.information(self, "Validation", "Formula syntax is valid!")
-            return True
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Invalid formula syntax:\n{str(e)}")
-            return False   
     
     def execute_calculation(self, dialog):
         """Execute raster calculation and prompt to save results"""
@@ -9837,61 +8184,26 @@ class SatelliteImageApp(QMainWindow):
                 QMessageBox.warning(self, "Empty Formula", "Please enter a formula")
                 return
 
-            # Extract and validate layers
-            layer_names = re.findall(r'"([^"]+)"', formula)
-            missing = [name for name in layer_names if name not in self.layers]
+            names = raster_expr.layer_names(formula)
+            missing = [n for n in names if n not in self.layers]
             if missing:
                 raise ValueError(f"Missing layers: {', '.join(missing)}")
-
-            # Prepare variables and environment
-            var_mapping = {}
-            modified_formula = formula
-            for name in layer_names:
-                safe_var = re.sub(r'[^a-zA-Z0-9]', '_', f"lyr_{name}")
-                var_mapping[name] = safe_var
-                modified_formula = modified_formula.replace(f'"{name}"', safe_var)
-
-            # Verify dimensions
-            base_shape = self.layers[layer_names[0]]['image'].shape[1:]
-            for name in layer_names:
-                if self.layers[name]['image'].shape[1:] != base_shape:
-                    raise ValueError(f"Layer {name} has incompatible dimensions")
-
-            # Setup calculation environment
-            env = {
-                'np': np,
-                'sqrt': np.sqrt,
-                'log': np.log,
-                'exp': np.exp,
-                'sin': np.sin,
-                'cos': np.cos,
-                'abs': np.abs,
-                'where': np.where,
-                'nan_to_num': np.nan_to_num
-            }
-
-            # Add layer data to environment
-            for name, safe_var in var_mapping.items():
-                arr = self.layers[name]['image']
-                env[safe_var] = arr[0] if (arr.ndim == 3 and arr.shape[0] == 1) else arr
-
-            # Execute calculation
-            modified_formula = self.add_division_safety(modified_formula)
-            tree = ast.parse(modified_formula, mode='eval')
-            code = compile(tree, '<string>', 'eval')
-
-            with np.errstate(divide='ignore', invalid='ignore'):
-                result = eval(code, {"__builtins__": None}, env)
-
-            # Post-process result
-            result = np.nan_to_num(result)
+            arrays = {}
+            for n in names:
+                if 'image' not in self.layers[n]:
+                    raise ValueError(f"Layer '{n}' is not a raster")
+                arrays[n] = self.layers[n]['image']
+            # Evaluate with the whitelisted expression engine (no eval of arbitrary code, 0-division -> NaN)
+            result = raster_expr.evaluate(formula, arrays)
             if result.ndim == 2:
                 result = result[np.newaxis, ...]
+            layer_names = names
 
             # Create new layer
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             new_layer = f"Calculation_{timestamp}"
-            profile = self.layers[layer_names[0]]['profile'].copy()
+            profile = dict(self.layers[layer_names[0]]['profile'])
+            profile.update(dtype='float32', nodata=float('nan'), count=result.shape[0])
             
             self.layers[new_layer] = {
                 'image': result,
@@ -9908,7 +8220,7 @@ class SatelliteImageApp(QMainWindow):
             # Show statistics and ask about saving
             stats = (f"Calculation Statistics:\n"
                     f"Dimensions: {result.shape[1]}x{result.shape[2]}\n"
-                    f"Data Range: {result.min():.2f} to {result.max():.2f}\n"
+                    f"Data Range: {np.nanmin(result):.4g} to {np.nanmax(result):.4g} (NaN = undefined)\n"
                     f"Formula: {formula}")
             
             msg = QMessageBox()
@@ -9975,56 +8287,6 @@ class SatelliteImageApp(QMainWindow):
                             f"Failed to save results: {str(e)}")
     
 ####################################### Raster Projection ####################################33
-    def get_raster_bounds(self, layer):
-        """Calculate geographic bounds of the raster in WGS84 with improved error handling"""
-        try:
-            # Check if bounds already in WGS84
-            if 'bounds' in layer and 'min_lon' in layer['bounds']:
-                return layer['bounds']
-            
-            # Get transform and dimensions
-            transform = layer['profile']['transform']
-            width = layer['image'].width
-            height = layer['image'].height
-            
-            # Calculate corner coordinates in pixel coordinates
-            corners_pixel = [
-                (0, 0),      # Top-left
-                (width, 0),  # Top-right
-                (width, height),  # Bottom-right
-                (0, height)   # Bottom-left
-            ]
-            
-            # Convert to geographic coordinates
-            corners_geo = [transform * point for point in corners_pixel]
-            
-            # Get source CRS
-            src_crs = layer['profile'].get('crs', 'EPSG:4326')  # Default to WGS84
-            
-            # If not already WGS84, transform coordinates
-            if src_crs != 'EPSG:4326':
-                try:
-                    transformer = pyproj.Transformer.from_crs(
-                        src_crs, 'EPSG:4326', always_xy=True)
-                    corners_geo = [transformer.transform(x, y) for x, y in corners_geo]
-                except Exception as e:
-                    print(f"CRS transformation failed: {e}")
-                    return None
-            
-            # Extract min/max coordinates
-            lons = [point[0] for point in corners_geo]
-            lats = [point[1] for point in corners_geo]
-            
-            return {
-                'min_lon': min(lons),
-                'max_lon': max(lons),
-                'min_lat': min(lats),
-                'max_lat': max(lats)
-            }
-            
-        except Exception as e:
-            print(f"Error in get_raster_bounds: {e}")
-            return None
     
 
  
@@ -10557,387 +8819,16 @@ class SatelliteImageApp(QMainWindow):
                         os.remove(raster_path)
                         del layer['temp_path']
                     except Exception as e:
-                        print(f"Warning: Could not delete temp file: {str(e)}")
-
+                        logging.info(f"Warning: Could not delete temp file: {str(e)}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An unexpected error occurred: {str(e)}")         
-
-    def update_utm_preview(self):
-        """Update the UTM preview information"""
-        if not hasattr(self, 'zone_combo') or not hasattr(self, 'hemi_combo'):
-            return
-        
-        zone = self.zone_combo.currentData()
-        hemi = self.hemi_combo.currentData()
-        epsg = 32600 + zone if hemi == 'N' else 32700 + zone
-        
-        preview_text = f"""
-        <b>Selected UTM Zone:</b> {zone}{hemi}<br>
-        <b>EPSG Code:</b> EPSG:{epsg}<br>
-        <b>Central Meridian:</b> {-177 + 6*(zone-1)}°<br>
-        <b>Valid Range:</b> {'0° to 84°N' if hemi == 'N' else '80°S to 0°'}<br>
-        <b>Units:</b> Meters<br>
-        <b>Datum:</b> WGS84
-        """
-        
-        if hasattr(self, 'preview_label'):
-            self.preview_label.setText(preview_text)    
-
-    def get_human_readable_crs(self, crs):
-        """Convert CRS object to human-readable information"""
-        if isinstance(crs, str):
-            if crs == 'EPSG:4326':
-                return {
-                    'name': "WGS 84 (Latitude/Longitude)",
-                    'type': "Geographic",
-                    'units': "Degrees",
-                    'epsg': "EPSG:4326",
-                    'datum': "WGS84"
-                }
-            elif crs.startswith('EPSG:326'):
-                zone = int(crs[8:])
-                return {
-                    'name': f"UTM Zone {zone}N",
-                    'type': "Projected",
-                    'units': "Meters",
-                    'epsg': crs,
-                    'datum': "WGS84"
-                }
-            elif crs.startswith('EPSG:327'):
-                zone = int(crs[8:])
-                return {
-                    'name': f"UTM Zone {zone}S",
-                    'type': "Projected",
-                    'units': "Meters",
-                    'epsg': crs,
-                    'datum': "WGS84"
-                }
-        
-        # Default return for unknown CRS
-        return {
-            'name': str(crs) if crs else "Unknown Coordinate System",
-            'type': "Unknown",
-            'units': "Unknown",
-            'epsg': str(crs) if crs else "Not specified",
-            'datum': "Unknown"
-        }
-
-    def update_crs_preview(self, crs_info, utm_widget):
-        """Update the CRS preview and toggle UTM zone visibility"""
-        self.crs_preview.setText(self.format_crs_preview(crs_info))
-        
-        # Show UTM widgets only if custom UTM is selected
-        show_utm = crs_info.get('custom_utm', False)
-        utm_widget.setVisible(show_utm)
-        
-        # Adjust dialog size if needed
-        if show_utm:
-            self.crs_preview.parent().parent().parent().adjustSize()
-
-
-    def build_crs_database(self, suggested_utm_zones, bounds):
-        """Build the database of available CRS options"""
-        crs_db = []
-        
-        # Always add recommended UTM zones first if available
-        for zone_info in suggested_utm_zones:
-            hemi = 'N' if zone_info['min_lat'] >= 0 else 'S'
-            epsg = 32600 + zone_info['zone'] if hemi == 'N' else 32700 + zone_info['zone']
-            crs_db.append({
-                'name': f"UTM Zone {zone_info['zone']}{hemi} (Recommended)",
-                'epsg': f"EPSG:{epsg}",
-                'type': "Projected",
-                'units': "Meters",
-                'datum': "WGS84",
-                'area': f"{zone_info['min_lon']:.1f}°-{zone_info['max_lon']:.1f}°E",
-                'zone': zone_info['zone'],
-                'hemisphere': hemi
-            })
-        
-        # Add standard UTM option (all zones) if we have bounds
-        if bounds:
-            crs_db.append({
-                'name': "UTM Zone (Manual Selection)",
-                'epsg': "custom",
-                'type': "Projected",
-                'units': "Meters",
-                'datum': "WGS84",
-                'area': "User-defined",
-                'custom_utm': True
-            })
-        
-        # Standard CRS options
-        crs_db.extend([
-            {
-                'name': "WGS84 (Lat/Lon)",
-                'epsg': "EPSG:4326",
-                'type': "Geographic",
-                'units': "Degrees",
-                'datum': "WGS84",
-                'area': "Global"
-            },
-            {
-                'name': "Web Mercator",
-                'epsg': "EPSG:3857",
-                'type': "Projected",
-                'units': "Meters",
-                'datum': "WGS84",
-                'area': "Global between 85°S and 85°N"
-            }
-        ])
-        
-        # Add custom CRS option
-        crs_db.append({
-            'name': "Custom CRS...",
-            'epsg': "custom",
-            'type': "User-defined",
-            'units': "Varies",
-            'datum': "Varies",
-            'area': "User-defined"
-        })
-        
-        return crs_db
-
-    def format_crs_preview(self, crs_info):
-        """Format CRS information for display"""
-        lines = [
-            f"<b>Coordinate System:</b> {crs_info['name']}",
-            f"<b>Type:</b> {crs_info['type']}",
-            f"<b>Units:</b> {crs_info['units']}",
-            f"<b>Datum:</b> {crs_info['datum']}",
-            f"<b>Area of Use:</b> {crs_info.get('area', 'Not specified')}"
-        ]
-        
-        if crs_info['epsg'] != 'custom':
-            lines.append(f"<b>EPSG Code:</b> {crs_info['epsg']}")
-        
-        return "<br>".join(lines)
-
-    def format_crs_tooltip(self, crs_info):
-        """Format tooltip for CRS options"""
-        return (
-            f"<b>Type:</b> {crs_info['type']}<br>"
-            f"<b>Units:</b> {crs_info['units']}<br>"
-            f"<b>Datum:</b> {crs_info['datum']}<br>"
-            f"<b>Area:</b> {crs_info.get('area', 'Not specified')}"
-        )
-
-    def get_raster_bounds(self, layer):
-        """Calculate geographic bounds of the raster in WGS84"""
-        try:
-            # Check if bounds already in WGS84
-            if 'bounds' in layer and 'min_lon' in layer['bounds']:
-                return layer['bounds']
-            
-            # Get transform and calculate corners
-            transform = layer['profile']['transform']
-            width, height = layer['image'].width, layer['image'].height
-            
-            corners = [
-                transform * (0, 0),
-                transform * (width, 0),
-                transform * (width, height),
-                transform * (0, height)
-            ]
-            
-            # Transform to WGS84 if needed
-            if layer['profile'].get('crs'):
-                src_crs = layer['profile']['crs']
-                dst_crs = 'EPSG:4326'
-                transformer = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True)
-                corners = [transformer.transform(x, y) for x, y in corners]
-            
-            lons = [p[0] for p in corners]
-            lats = [p[1] for p in corners]
-            
-            return {
-                'min_lon': min(lons),
-                'max_lon': max(lons),
-                'min_lat': min(lats),
-                'max_lat': max(lats)
-            }
-        except Exception as e:
-            print(f"Error calculating bounds: {e}")
-            return None
-
-    def calculate_utm_zones(self, bounds):
-        """Calculate which UTM zones intersect with the raster bounds with better validation"""
-        if not bounds:
-            return []
-        
-        min_lon = bounds['min_lon']
-        max_lon = bounds['max_lon']
-        min_lat = bounds['min_lat']
-        max_lat = bounds['max_lat']
-        
-        # Validate bounds
-        if not (-180 <= min_lon <= 180 and -180 <= max_lon <= 180 and
-                -90 <= min_lat <= 90 and -90 <= max_lat <= 90):
-            print("Invalid coordinate bounds")
-            return []
-        
-        # Calculate UTM zones
-        start_zone = int((min_lon + 180) // 6) + 1
-        end_zone = int((max_lon + 180) // 6) + 1
-        
-        # Handle dateline crossing
-        zones = set()
-        if start_zone > end_zone:
-            zones.update(range(start_zone, 61))
-            zones.update(range(1, end_zone + 1))
-        else:
-            zones.update(range(start_zone, end_zone + 1))
-        
-        # Filter invalid zones (UTM valid between 80°S and 84°N)
-        valid_zones = []
-        for zone in sorted(zones):
-            zone_center = -177 + (zone - 1) * 6
-            zone_min_lon = zone_center - 3
-            zone_max_lon = zone_center + 3
-            
-            # Check if raster intersects with this zone
-            if not (max_lon < zone_min_lon or min_lon > zone_max_lon):
-                valid_zones.append({
-                    'zone': zone,
-                    'min_lon': max(min_lon, zone_min_lon),
-                    'max_lon': min(max_lon, zone_max_lon),
-                    'min_lat': max(min_lat, -80),  # UTM southern limit
-                    'max_lat': min(max_lat, 84)    # UTM northern limit
-                })
-        
-        return valid_zones
-
-    def perform_reprojection(self, layer_name, target_epsg, resample_method):
-        """Perform the actual raster reprojection"""
-        layer = self.layers[layer_name]
-        
-        with rasterio.open(layer['path']) as src:
-            src_crs = src.crs
-            src_transform = src.transform
-            src_array = src.read()
-            
-            # Calculate destination CRS and transform
-            dst_crs = rasterio.crs.CRS.from_string(target_epsg)
-            dst_transform, dst_width, dst_height = rasterio.warp.calculate_default_transform(
-                src_crs, dst_crs, src.width, src.height, *src.bounds)
-            
-            # Create destination array
-            dst_array = np.empty((src.count, dst_height, dst_width), dtype=src_array.dtype)
-            
-            # Perform reprojection
-            rasterio.warp.reproject(
-                source=src_array,
-                destination=dst_array,
-                src_transform=src_transform,
-                src_crs=src_crs,
-                dst_transform=dst_transform,
-                dst_crs=dst_crs,
-                resampling=getattr(rasterio.warp.Resampling, resample_method))
-            
-            # Update the layer in memory
-            self.layers[layer_name]['image'] = dst_array
-            self.layers[layer_name]['profile'].update({
-                'crs': dst_crs,
-                'transform': dst_transform,
-                'width': dst_width,
-                'height': dst_height
-            })
-            
-            # Update display
-            self.display_layer(layer_name)
 
 
 ####################################################################################################3
         
-    def add_division_safety(self, formula):
-        """
-        Adds safety to division operations in a mathematical formula using sympy.        
-        Parameters:
-            formula (str): The mathematical formula as a string.            
-        Returns:
-            str: The modified formula with division safety added.            
-        Raises:
-            ValueError: If the formula cannot be parsed or contains invalid syntax.
-        """
-        try:
-            # Parse the formula into a sympy expression
-            expr = sympify(formula)
-
-            # Define a recursive function to traverse and modify the expression tree
-            def add_epsilon(expr):
-                """
-                Recursively traverses the expression tree and adds epsilon to denominators.
-                
-                Parameters:
-                    expr: The current sympy expression node.
-                    
-                Returns:
-                    Modified sympy expression with division safety.
-                """
-                if isinstance(expr, Mul):
-                    # Handle multiplication: recursively process each factor
-                    return Mul(*[add_epsilon(arg) for arg in expr.args])
-                elif isinstance(expr, Pow):
-                    # Handle division: x^(-1) -> (x + 1e-9)^(-1)
-                    base, exponent = expr.args
-                    if exponent == -1:
-                        return Pow(base + 1e-9, -1)
-                    else:
-                        return Pow(add_epsilon(base), add_epsilon(exponent))
-                elif isinstance(expr, Add):
-                    # Handle addition: recursively process each term
-                    return Add(*[add_epsilon(arg) for arg in expr.args])
-                else:
-                    # Base case: return the expression unchanged
-                    return expr
-
-            # Apply the function to the entire expression
-            safe_expr = add_epsilon(expr)
-
-            # Convert the modified expression back to a string
-            return str(safe_expr)
-
-        except Exception as e:
-            # Raise an error if the formula cannot be parsed or processed
-            raise ValueError(f"Failed to parse formula: {formula}. Error: {str(e)}")       
 
     
-    def show_error_message(self, message):
-        """Show an error message dialog"""
-        QMessageBox.critical(self, "Error", message)
 
-    def overlay_classified_results(self, original_image_path, classified_image_path):
-            """
-            Overlay the classified results on top of the original satellite image using leafmap.
-
-            Args:
-                original_image_path (str): Path to the original satellite image.
-                classified_image_path (str): Path to the classified image.
-            """
-            try:
-                # Create a leafmap map
-                m = leafmap.Map()
-
-                # Add the original satellite image
-                m.add_raster(original_image_path, layer_name="Satellite Image")
-
-                # Add the classified image with transparency
-                m.add_raster(classified_image_path, alpha=0.5, layer_name="Classified Results")
-
-                # Display the map
-                m.to_streamlit()  # If using Streamlit
-                # m.show()  # If using Jupyter Notebook or standalone
-
-                # Alternatively, use image_comparison for side-by-side comparison
-                leafmap.image_comparison(
-                    original_image_path,
-                    classified_image_path,
-                    label1="Satellite Image",
-                    label2="Classified Results",
-                )
-
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to create overlay: {str(e)}")
 
     def show_overlay_dialog(self):
         """
@@ -11147,149 +9038,9 @@ class SatelliteImageApp(QMainWindow):
             
     #     except Exception as e:
     #         QMessageBox.critical(self, "Error", f"Failed to overlay layers: {str(e)}")
-    def overlay_layers(self, layer_order, transparency_values):
-        """
-        عرض متطور للطبقات المتداخلة مع تحسينات في التصيير
-        """
-        try:
-            # مسح الشكل الحالي
-            self.ax.clear()
-            
-            # إذا كانت هناك طبقة واحدة فقط
-            if len(layer_order) == 1:
-                layer_name = layer_order[0]
-                layer_data = self.layers[layer_name]
-                if layer_data.get('visible', True):
-                    image = layer_data['image']
-                    opacity = transparency_values.get(layer_name, 1.0)
-                    
-                    if image.ndim == 3:  # صورة RGB
-                        self.ax.imshow(image.transpose(1, 2, 0), alpha=opacity)
-                    else:  # صورة رمادية
-                        self.ax.imshow(image[0], cmap='gray', alpha=opacity,
-                                    vmin=np.percentile(image[0], 2),  # تحسين التباين
-                                    vmax=np.percentile(image[0], 98))
-            
-            # إذا كانت هناك عدة طبقات
-            else:
-                composite = None
-                
-                for layer_name in layer_order:
-                    layer_data = self.layers[layer_name]
-                    if not layer_data.get('visible', True):
-                        continue
-                        
-                    image = layer_data['image']
-                    opacity = transparency_values.get(layer_name, 0.5)
-                    
-                    if image.ndim == 3:  # صورة RGB
-                        layer_img = image.transpose(1, 2, 0)
-                    else:  # صورة رمادية
-                        layer_img = np.stack([image[0]]*3, axis=-1)
-                        # تحسين التباين للصور الرمادية
-                        layer_img = (layer_img - np.percentile(image[0], 2)) / (
-                            np.percentile(image[0], 98) - np.percentile(image[0], 2))
-                        layer_img = np.clip(layer_img, 0, 1)
-                    
-                    if composite is None:
-                        composite = layer_img * opacity
-                    else:
-                        # دمج الطبقات مع الشفافية
-                        composite = composite * (1 - opacity) + layer_img * opacity
-                
-                if composite is not None:
-                    # تحسين العرض النهائي
-                    composite = np.clip(composite, 0, 1)
-                    self.ax.imshow(composite)
-            
-            # إزالة المحاور
-            self.ax.set_axis_off()
-            
-            # ضبط المسافات البادئة
-            self.fig.tight_layout()
-            
-            # تحديث الشكل
-            self.canvas.draw()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to display overlapping layers: {str(e)}")
 
 
-    def display_overlay(self, original_image, original_crs, classified_image, classified_crs):
-        """
-        Enhanced overlay display using leafmap with better performance.
-        """
-        try:
-            # Create a leafmap map
-            m = leafmap.Map()
-            
-            # Use memory-based approach instead of temp files when possible
-            if hasattr(leafmap, 'add_raster_from_array'):
-                # Direct array support (if available in your leafmap version)
-                m.add_raster_from_array(
-                    original_image.transpose(1, 2, 0),
-                    layer_name="Original Image",
-                    colormap='gray' if original_image.shape[0] == 1 else None
-                )
-                m.add_raster_from_array(
-                    classified_image[0] if classified_image.shape[0] == 1 else classified_image.transpose(1, 2, 0),
-                    layer_name="Classified Image",
-                    alpha=0.5,
-                    colormap='viridis' if classified_image.shape[0] == 1 else None
-                )
-            else:
-                # Fallback to temp files but with better handling
-                with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as temp_original:
-                    original_path = temp_original.name
-                    self.save_array_as_geotiff(original_image, original_crs, original_path)
-                    
-                with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as temp_classified:
-                    classified_path = temp_classified.name
-                    self.save_array_as_geotiff(classified_image, classified_crs, classified_path)
-                    
-                # Add layers
-                m.add_raster(
-                    original_path,
-                    layer_name="Original Image",
-                    colormap='gray' if original_image.shape[0] == 1 else None
-                )
-                m.add_raster(
-                    classified_path,
-                    layer_name="Classified Image",
-                    alpha=0.5,
-                    colormap='viridis' if classified_image.shape[0] == 1 else None
-                )
-                
-                # Schedule cleanup
-                QTimer.singleShot(3000, lambda: [os.remove(p) for p in [original_path, classified_path] if os.path.exists(p)])
-            
-            # Enhanced layer control
-            m.add_layer_control(position="topright")
-            m.add_basemap("SATELLITE")  # Optional basemap
-            
-            # Display the map
-            m.show()
-
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to display overlay: {str(e)}")
     
-    def save_array_as_geotiff(self, array, crs, file_path):
-        """Helper method to save numpy array as GeoTIFF."""
-        height, width = array.shape[1], array.shape[2]
-        transform = from_origin(0, 0, 1, 1)
-        
-        with rasterio.open(
-            file_path,
-            'w',
-            driver='GTiff',
-            height=height,
-            width=width,
-            count=array.shape[0],
-            dtype=array.dtype,
-            crs=crs,
-            transform=transform
-        ) as dst:
-            dst.write(array)
 
 
     def overlay_layers(self, layer_names, transparency_values):
@@ -11310,10 +9061,13 @@ class SatelliteImageApp(QMainWindow):
                     image = layer_data['image']
                     transparency = transparency_values.get(layer_name, 0.5)  # Default transparency if not provided
 
-                    if image.ndim == 3:  # RGB image
-                        self.ax.imshow(image.transpose(1, 2, 0), alpha=transparency)  # Use alpha for transparency
+                    lp = layer_data.get('profile') or {}
+                    if image.ndim == 3 and image.shape[0] in (3, 4):  # RGB image
+                        _, spec = georef.draw_raster(self.ax, image.transpose(1, 2, 0), lp, alpha=transparency)
+                    elif image.ndim == 3:  # single band stored as (1, H, W) or a band stack: show the first band
+                        _, spec = georef.draw_raster(self.ax, image[0], lp, cmap='gray', alpha=transparency)
                     else:  # Grayscale image
-                        self.ax.imshow(image[0], cmap='gray', alpha=transparency)
+                        _, spec = georef.draw_raster(self.ax, image, lp, cmap='gray', alpha=transparency)
 
             # Update the canvas
             self.canvas.draw()
@@ -11322,23 +9076,7 @@ class SatelliteImageApp(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to overlay layers: {str(e)}")
 
-    def update_overlay(self, layer_names, transparency_values):
-        """
-        Update the overlay with new transparency values.
-        """
-        self.overlay_layers(layer_names, transparency_values)
 
-    def toggle_layer_order(self):
-        """
-        Toggle the order of layers (bring the top layer to the bottom and vice versa).
-        """
-        if hasattr(self, 'layer_order'):
-            self.layer_order = not self.layer_order  # Toggle the order
-        else:
-            self.layer_order = True  # Default order (bottom layer first)
-
-        if hasattr(self, 'selected_layers') and hasattr(self, 'transparency_values'):
-            self.overlay_layers(self.selected_layers, self.transparency_values)
 
     def choose_bands(self, num_bands):
         """
@@ -11399,38 +9137,23 @@ class SatelliteImageApp(QMainWindow):
                     return None
         return None
     
-    def activate_rectangle_selection(self):
-        """Handle rectangle selection mode"""
-        self.selection_mode = 'rectangle'
-        self.canvas.setCursor(Qt.CrossCursor)
-        self.statusBar().showMessage("Rectangle selection mode - click and drag to select")
 
-    def activate_polygon_selection(self):
-        """Handle polygon selection mode""" 
-        self.selection_mode = 'polygon'
-        self.canvas.setCursor(Qt.CrossCursor)
-        self.selection_points = []
-        self.statusBar().showMessage("Polygon selection mode - click to add points, right-click to finish")
 
-    def clear_selection(self):
-        """Clear current selection"""
-        if hasattr(self.polygon_processor, 'selected_features'):
-            self.polygon_processor.selected_features.clear()
-        self.update_map_display()
-        self.statusBar().showMessage("Selection cleared")
     
     ################################ Filters  ###############################3
     
     def _apply_filter(self, filter_func, *args):
         """Helper method to apply filter with statistics comparison"""
         if hasattr(self, 'image'):
+            pushed = False
             try:
                 # Capture pre-filter statistics
                 pre_stats = self._get_image_stats(self.image)
                 
                 # Save current state for undo
                 current_layer = self.layer_list.currentItem().text() if self.layer_list.currentItem() else "Filtered"
-                self.undo_stack.append((self.image.copy(), current_layer))
+                self._push_undo()
+                pushed = True
                 
                 # Apply the filter
                 filtered_image = filter_func(self.image.copy(), *args)
@@ -11460,7 +9183,8 @@ class SatelliteImageApp(QMainWindow):
                 
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Filter failed: {str(e)}")
-                self.undo()
+                if pushed and self.undo_stack:
+                    self.undo_stack.pop()  # discard the snapshot; the image was never replaced
 
     def _get_image_stats(self, image):
         """Calculate comprehensive image statistics for all bands"""
@@ -11645,7 +9369,7 @@ class SatelliteImageApp(QMainWindow):
                         ax_title.axis('off')
                         ax_title.text(0.5, 0.5, 
                                     f"Filter Results Report\n\n{filter_name.replace('_', ' ').title()}\n\n"
-                                    f"Generated on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                                    f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
                                     ha='center', va='center', fontsize=14)
                         pdf.savefig(fig_title, bbox_inches='tight')
                         
@@ -11708,7 +9432,7 @@ class SatelliteImageApp(QMainWindow):
         ax = fig.add_subplot(111)
         
         if 'bands' in pre_stats:
-            colors = plt.cm.get_cmap('tab10', len(pre_stats['bands']))
+            colors = _get_cmap('tab10', len(pre_stats['bands']))
             for i in range(len(pre_stats['bands'])):
                 pre_band = pre_stats['bands'][i]
                 post_band = post_stats['bands'][i]
@@ -11847,847 +9571,916 @@ class SatelliteImageApp(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save image: {str(e)}")
 
-    def highlight_editing_layer(self, layer_name, editing_active):
-        """Change layer appearance in legend when editing"""
-        for i in range(self.layer_list.count()):
-            item = self.layer_list.item(i)
-            if item.text() == layer_name:
-                font = item.font()
-                font.setBold(editing_active)
-                item.setFont(font)
-                if editing_active:
-                    item.setBackground(QColor(255, 255, 150))  # Light yellow
-                else:
-                    item.setBackground(QBrush())  # Reset
-                break
 
     def toggle_edit_buttons(self, enable):
         """Enable/disable Save/Stop buttons (called by polygon_processor)."""
         self.actionSave_Edits.setEnabled(enable)
         self.actionStop_Editing.setEnabled(enable)
 
-    def connect_edit_buttons(self):
-        """Connect toolbar buttons to polygon_processor functions."""
-        self.actionStart_Editing.triggered.connect(self.polygon_processor.start_editing)
-        self.actionSave_Edits.triggered.connect(self.polygon_processor.save_edits)
-        self.actionStop_Editing.triggered.connect(self.polygon_processor.stop_editing)
     
-    def on_start_editing_clicked(self):
-        success = self.polygon_processor.start_editing()
-        if not success:
-            QMessageBox.warning(self, "Error", "Could not start editing session")
-        else:
-            self.toggle_edit_buttons(True)
 
-    def on_save_clicked(self):
-        if self.polygon_processor.save_edits():
-            # Get current layer name
-            layer_name = os.path.basename(self.polygon_processor.original_file_path)
-            
-            # Force UI refresh
-            self.layer_list.currentItem().setSelected(False)
-            self.layer_list.currentItem().setSelected(True)
-            
-            # Alternative: full reload
-            self.reload_layer(layer_name)
 
-    def setup_editing_workflow(self):
-        # Connect signals
-        self.actionStart_Editing.triggered.connect(self.start_editing_session)
-        self.actionSave_Edits.triggered.connect(self.save_edits_session)
-        self.actionStop_Editing.triggered.connect(self.stop_editing_session)
-        
-        # Attribute table connections
-        self.attributeTable.cellChanged.connect(self.handle_attribute_edit)
-
-    def start_editing_session(self):
-        if self.polygon_processor.start_editing():
-            self.set_editing_ui_state(True)
-            self.show_info("Editing started - remember to save!")
-
-    def save_edits_session(self):
-        if self.polygon_processor.save_edits():
-            layer_name = os.path.basename(self.polygon_processor.original_file_path)
-            self.reload_layer(layer_name)
-            self.show_info("Edits saved successfully")
-
-    def stop_editing_session(self):
-        self.polygon_processor.stop_editing()
-        self.set_editing_ui_state(False)
 ############################################# Wet Area 
 
     # # Add to SatelliteImageApp class methods
-    # def add_wet_area_detection_tool(self):
-    #     """Add wet area detection to raster processing menu"""
-    #     wet_area_action = QAction('Detect Wet Areas (Sentinel-1)', self)
-    #     wet_area_action.triggered.connect(self.detect_wet_areas)
-    #     self.menuBar().findChild(QMenu, 'Raster Processing Tools').addAction(wet_area_action)
-
-    def detect_wet_areas(self):
-        """Main method for wet area detection from Sentinel-1 data"""
-        try:
-            # Get current layer data
-            layer_data = self.get_current_layer_data()
-            if not layer_data or layer_data.get('type') != 'raster':
-                raise ValueError("No valid SAR layer selected")
-
-            # Verify it's Sentinel-1 data
-            if not self.is_sentinel1_data(layer_data):
-                QMessageBox.warning(self, "Warning", 
-                                "Selected layer doesn't appear to be Sentinel-1 data")
-                return
-
-            # Get parameters through dialog
-            params = self.get_wet_area_params()
-            if not params:
-                return
-
-            # Start processing
-            self.progress_bar.setVisible(True)
-            self.worker = Worker(self.process_wet_areas, 
-                                layer_data['image'], 
-                                layer_data['profile'], 
-                                params)
-            self.worker.progress.connect(self.update_progress)
-            self.worker.finished.connect(self.on_wet_area_processed)
-            self.worker.start()
-
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Initialization failed: {str(e)}")
-
-    def process_wet_areas(self, image, profile, params):
-        """Core processing logic"""
-        try:
-            # 1. Preprocessing
-            processed = self.preprocess_sar(image, profile, params)
-            
-            # 2. Thresholding
-            water_mask = self.apply_threshold(processed, params['threshold'])
-            
-            # 3. Post-processing
-            filtered_mask = self.postprocess_mask(water_mask)
-            
-            return filtered_mask, profile
-            
-        except Exception as e:
-            self.error.emit(f"Processing error: {str(e)}")
-            raise
-
-    def preprocess_sar(self, image, profile, params):
-        """SAR-specific preprocessing"""
-        # Convert to dB scale if needed
-        if params['convert_to_db']:
-            image = 10 * np.log10(image)
-        
-        # Apply speckle filter
-        if params['speckle_filter']:
-            image = self.apply_lee_filter(image)
-        
-        return image
-
-    def get_wet_area_params(self):
-        """Get parameters through dialog"""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Wet Area Detection Parameters")
-        
-        layout = QFormLayout()
-        
-        # Threshold input
-        threshold_spin = QDoubleSpinBox()
-        threshold_spin.setRange(-30, 0)
-        threshold_spin.setValue(-15)
-        layout.addRow("Backscatter Threshold (dB):", threshold_spin)
-        
-        # Preprocessing options
-        db_check = QCheckBox("Convert to dB scale")
-        db_check.setChecked(True)
-        layout.addRow(db_check)
-        
-        filter_check = QCheckBox("Apply Lee Filter")
-        filter_check.setChecked(True)
-        layout.addRow(filter_check)
-        
-        # Dialog buttons
-        btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        btn_box.accepted.connect(dialog.accept)
-        btn_box.rejected.connect(dialog.reject)
-        layout.addRow(btn_box)
-        
-        dialog.setLayout(layout)
-        
-        if dialog.exec_() == QDialog.Accepted:
-            return {
-                'threshold': threshold_spin.value(),
-                'convert_to_db': db_check.isChecked(),
-                'speckle_filter': filter_check.isChecked()
-            }
-        return None
-
-    def on_wet_area_processed(self, result):
-        """Handle processed wet area mask"""
-        water_mask, profile = result
-        layer_name = f"Wet_Areas_{datetime.now().strftime('%Y%m%d_%H%M')}"
-        
-        # Add as new layer with blue color map
-        self.layers[layer_name] = {
-            'image': water_mask,
-            'profile': profile,
-            'cmap': 'Blues',
-            'vmin': 0,
-            'vmax': 1
-        }
-        
-        item = QListWidgetItem(QIcon(":/icons/water.png"), layer_name)
-        self.layer_list.addItem(item)
-        self.display_raster_layer(water_mask, layer_name)
-        self.progress_bar.setVisible(False)
-
-        # Add to __init__ method after initializing menus
-        self.add_wet_area_detection_tool()
-
 ######################################## New SAR ############################
     
+    # ======================================================================
+    # SAR water workflow - real Sentinel-1 preprocessing through ESA SNAP (gpt)
+    # ======================================================================
     def _init_sar_workflow_actions(self):
-        """Initialize workflow steps with proper step naming"""
-        self.workflow_steps = [
-            'load', 
-            'orbit', 
-            'calibrate', 
-            'filter', 
-            'terrain', 
-            'convert_db', 
-            'analyze', 
-            'classify'
-        ]
-        
+        """Step-by-step SAR water workflow shown under the 'SAR Water Classification' menu."""
+        self.workflow_steps = ['load', 'snap', 'analyze', 'classify']
         self.workflow_actions = [
-            self.sar_menu.addAction('1. Load SAR Data'),
-            self.sar_menu.addAction('2. Apply Orbit File'),
-            self.sar_menu.addAction('3. Calibrate (σ₀)'),
-            self.sar_menu.addAction('4. Apply Speckle Filter'),
-            self.sar_menu.addAction('5. Terrain Correction'),
-            self.sar_menu.addAction('6. Convert to dB'),
-            self.sar_menu.addAction('7. Analyze Histogram'),
-            self.sar_menu.addAction('8. Classify Water')
+            self.sar_menu.addAction('1. Select Sentinel-1 GRD Product'),
+            self.sar_menu.addAction('2. Run SNAP Preprocessing (orbit, σ₀, speckle, terrain, dB)'),
+            self.sar_menu.addAction('3. Choose Water Threshold (histogram)'),
+            self.sar_menu.addAction('4. Classify Water'),
         ]
-        
-        # Connect signals using step names
         self.workflow_actions[0].triggered.connect(self.start_sar_workflow)
-        self.workflow_actions[1].triggered.connect(self.apply_orbit_file)
-        self.workflow_actions[2].triggered.connect(self.calibrate)
-        self.workflow_actions[3].triggered.connect(self.apply_filter)
-        self.workflow_actions[4].triggered.connect(self.terrain_correction)
-        self.workflow_actions[5].triggered.connect(self.convert_db)
-        self.workflow_actions[6].triggered.connect(self.analyze_histogram)
-        self.workflow_actions[7].triggered.connect(self.classify_water)
-        
-        # Initialize with first step enabled
+        self.workflow_actions[1].triggered.connect(self.run_snap_preprocessing)
+        self.workflow_actions[2].triggered.connect(self.analyze_histogram)
+        self.workflow_actions[3].triggered.connect(self.classify_water)
+        self.sar_menu.addSeparator()
+        load_action = self.sar_menu.addAction('Load processed σ₀ dB GeoTIFF (skip SNAP)...')
+        load_action.triggered.connect(self.load_processed_db)
+        flood_action = self.sar_menu.addAction('5. Flood Mapping (before / after)...')
+        flood_action.triggered.connect(self.flood_mapping)
+        self.sar_menu.addSeparator()
+        settings_action = self.sar_menu.addAction('SNAP Settings (gpt location)...')
+        settings_action.triggered.connect(self.snap_settings)
+        self.sar_product = None
+        self.sar_footprint = None
+        self.snap_worker = None
         self._reset_workflow()
 
+    def _snap_dialog(self, info):
+        """SNAP parameters + flexible study-area selection. Returns (SnapParams, out_dir) or None."""
+        from matplotlib.widgets import RectangleSelector
+        path = self.sar_product.path
+        dlg = QDialog(self)
+        dlg.setWindowTitle("SNAP Sentinel-1 preprocessing")
+        dlg.setMinimumSize(1000, 640)
+        outer = QHBoxLayout(dlg)
+        left = QWidget(); form = QFormLayout(left)
+        outer.addWidget(left, 5)
+
+        pol = QComboBox(); pol.addItems(info.polarisations)
+        orbit = QComboBox(); orbit.addItems(sar_snap.ORBIT_TYPES)
+        thermal = QCheckBox("Thermal noise removal"); thermal.setChecked(True)
+        speckle = QComboBox(); speckle.addItems(sar_snap.SPECKLE_FILTERS); speckle.setCurrentText("Lee")
+        win = QSpinBox(); win.setRange(3, 15); win.setSingleStep(2); win.setValue(5)
+        dem = QComboBox(); dem.addItems(sar_snap.DEM_NAMES)
+        dem_file = QLineEdit(); dem_file.setEnabled(False)
+        dem.currentTextChanged.connect(lambda t: dem_file.setEnabled(t == "External DEM"))
+        spacing = QDoubleSpinBox(); spacing.setRange(1.0, 1000.0); spacing.setValue(10.0); spacing.setSuffix(" m")
+        proj = QComboBox(); proj.addItems(["WGS84(DD)", "AUTO:42001"])      # EPSG:4326 made SNAP 10 fail (zero-size output)
+        out_edit = QLineEdit(self._snap_qsettings().value("snap/out_dir", os.path.join(tempfile.gettempdir(), "SpaceGeoVision_SAR"), type=str))
+        out_btn = QPushButton("Browse...")
+        out_row = QHBoxLayout(); out_row.addWidget(out_edit); out_row.addWidget(out_btn)
+        out_btn.clicked.connect(lambda: out_edit.setText(
+            QFileDialog.getExistingDirectory(dlg, "Output folder", out_edit.text()) or out_edit.text()))
+
+        # ---------------- study area -----------------
+        fp = self.sar_footprint
+        fx0, fy0, fx1, fy1 = sar_snap.footprint_bbox(fp) if fp else (-180.0, -90.0, 180.0, 90.0)
+
+        def dspin(value, lo, hi, dec=4):
+            w = QDoubleSpinBox(); w.setDecimals(dec); w.setRange(lo, hi); w.setValue(value); return w
+        mode_c = QComboBox()
+        mode_c.addItems(["Whole scene (automatic bounds)", "Bounding box (lon / lat)",
+                         "Centre point + radius (km)", "Custom polygon (WKT)"])
+        stack = QStackedWidget()
+        p0 = QLabel(f"Bounds detected automatically from the raw product:\nlongitude {fx0:.3f} .. {fx1:.3f}\nlatitude {fy0:.3f} .. {fy1:.3f}\n"
+                    "Processing the whole scene is slow and memory-hungry.")
+        p0.setWordWrap(True)
+        stack.addWidget(p0)
+        pb = QWidget(); fb = QFormLayout(pb)
+        b_x0, b_y0 = dspin(fx0, -180, 180), dspin(fy0, -90, 90)
+        b_x1, b_y1 = dspin(fx1, -180, 180), dspin(fy1, -90, 90)
+        fb.addRow("Longitude min:", b_x0); fb.addRow("Latitude min:", b_y0)
+        fb.addRow("Longitude max:", b_x1); fb.addRow("Latitude max:", b_y1)
+        fb.addRow(QLabel("Tip: drag a rectangle on the map to the right."))
+        stack.addWidget(pb)
+        pc = QWidget(); fc = QFormLayout(pc)
+        c_lon, c_lat = dspin((fx0 + fx1) / 2, -180, 180), dspin((fy0 + fy1) / 2, -90, 90)
+        c_rad = QDoubleSpinBox(); c_rad.setRange(1, 150); c_rad.setValue(20); c_rad.setSuffix(" km")
+        fc.addRow("Centre longitude:", c_lon); fc.addRow("Centre latitude:", c_lat); fc.addRow("Radius (half-width):", c_rad)
+        fc.addRow(QLabel("The scene centre is only a starting value and may be open sea:\nenter YOUR study area."))
+        stack.addWidget(pc)
+        pp = QWidget(); fpg = QVBoxLayout(pp)
+        poly_edit = QTextEdit(); poly_edit.setPlaceholderText("POLYGON((lon lat, lon lat, lon lat, lon lat))   WGS84, longitude first")
+        fpg.addWidget(poly_edit)
+        stack.addWidget(pp)
+        mode_c.currentIndexChanged.connect(stack.setCurrentIndex)
+        size_lbl = QLabel(); size_lbl.setWordWrap(True)
+        msg_lbl = QLabel(); msg_lbl.setWordWrap(True)
+
+        form.addRow("Polarisation:", pol); form.addRow("Orbit file:", orbit); form.addRow("", thermal)
+        form.addRow("Speckle filter:", speckle); form.addRow("Filter window (odd):", win)
+        form.addRow("DEM:", dem); form.addRow("External DEM file:", dem_file)
+        form.addRow("Terrain-corrected pixel size:", spacing); form.addRow("Map projection:", proj)
+        form.addRow(QLabel("<b>Study area</b>")); form.addRow("Select by:", mode_c); form.addRow(stack)
+        form.addRow(size_lbl); form.addRow(msg_lbl); form.addRow("Output folder:", out_row)
+        form.addRow(QLabel("Use the SAME area and settings for the before and the after scene.\n"
+                           "SNAP downloads orbit files and DEM tiles automatically: internet is required."))
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        form.addRow(btns)
+
+        # ---------------- map preview with an interactive rectangle -----------------
+        fig = Figure(figsize=(4.6, 4.6)); canvas = FigureCanvas(fig)
+        ax = fig.add_subplot(111)
+        outer.addWidget(canvas, 4)
+        if fp:
+            xs = [p[0] for p in fp] + [fp[0][0]]; ys = [p[1] for p in fp] + [fp[0][1]]
+            ax.plot(xs, ys, color='#2c3e50', lw=1.5, label='scene footprint')
+            ax.fill(xs, ys, color='#bdc3c7', alpha=0.4)
+        mx, my = (fx1 - fx0) * 0.05, (fy1 - fy0) * 0.05
+        ax.set_xlim(fx0 - mx, fx1 + mx); ax.set_ylim(fy0 - my, fy1 + my)
+        ax.set_aspect(1.0 / max(0.1, float(np.cos(np.radians((fy0 + fy1) / 2)))))
+        ax.set_xlabel("longitude"); ax.set_ylabel("latitude"); ax.grid(True, alpha=0.3)
+        sub_line, = ax.plot([], [], color='red', lw=2, label='study area')
+        ax.legend(loc='upper left', fontsize=8)
+        fig.tight_layout()
+
+        def current_spec():
+            i = mode_c.currentIndex()
+            if i == 0:
+                return sar_snap.SubsetSpec("full")
+            if i == 1:
+                return sar_snap.SubsetSpec("bbox", bbox=(b_x0.value(), b_y0.value(), b_x1.value(), b_y1.value()))
+            if i == 2:
+                return sar_snap.SubsetSpec("center", center=(c_lon.value(), c_lat.value()), radius_km=c_rad.value())
+            return sar_snap.SubsetSpec("polygon", wkt=poly_edit.toPlainText())
+
+        def refresh(*_):
+            try:
+                wkt = sar_snap.resolve_subset(current_spec(), path)
+                msg_lbl.setText("")
+            except sar_snap.SnapError as exc:
+                msg_lbl.setText(f'<span style="color:#c0392b">{exc}</span>')
+                size_lbl.setText(""); sub_line.set_data([], []); canvas.draw_idle()
+                return
+            shown = wkt if wkt else sar_snap.bbox_wkt(fx0, fy0, fx1, fy1)
+            nums = re.findall(r"(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)", shown)
+            sub_line.set_data([float(a) for a, _ in nums], [float(b) for _, b in nums])
+            canvas.draw_idle()
+            px = sar_snap.estimate_output_pixels(wkt, path, spacing.value())
+            colour = '#c0392b' if px == 0 or px > 200e6 else ('#d35400' if px > 60e6 else '#27ae60')
+            size_lbl.setText(f'<span style="color:{colour}">Output size: {sar_snap.size_advice(px)}</span>')
+
+        for w in (b_x0, b_y0, b_x1, b_y1, c_lon, c_lat, c_rad, spacing):
+            w.valueChanged.connect(refresh)
+        mode_c.currentIndexChanged.connect(refresh); poly_edit.textChanged.connect(refresh)
+
+        def on_rect(eclick, erelease):
+            if eclick.xdata is None or erelease.xdata is None:
+                return
+            x0, x1 = sorted((eclick.xdata, erelease.xdata)); y0, y1 = sorted((eclick.ydata, erelease.ydata))
+            if x1 - x0 < 1e-3 or y1 - y0 < 1e-3:
+                return
+            for w, v in ((b_x0, x0), (b_y0, y0), (b_x1, x1), (b_y1, y1)):
+                w.blockSignals(True); w.setValue(float(v)); w.blockSignals(False)
+            mode_c.setCurrentIndex(1)
+            refresh()
+        dlg._rect_selector = RectangleSelector(ax, on_rect, useblit=True, button=[1], interactive=False)
+        refresh()
+
+        result = {}
+
+        def on_ok():
+            try:
+                spec = current_spec()
+                wkt = sar_snap.resolve_subset(spec, path)
+                if wkt:
+                    frac = sar_snap.check_subset_in_footprint(wkt, path)        # raises if there is no overlap
+                    if frac < 0.999 and QMessageBox.question(
+                            dlg, "Partly outside the scene",
+                            f"Only {frac * 100:.0f}% of the sample points of this area lie inside the scene footprint.\n"
+                            "Part of it will have no data. Continue?") != QMessageBox.Yes:
+                        return
+                px = sar_snap.estimate_output_pixels(wkt, path, spacing.value())
+                if px > 200e6 and QMessageBox.question(
+                        dlg, "Very large area",
+                        f"{sar_snap.size_advice(px)}.\nThis can take hours or exhaust the memory. Continue anyway?") != QMessageBox.Yes:
+                    return
+                params = sar_snap.SnapParams(
+                    polarisation=pol.currentText(), orbit_type=orbit.currentText(),
+                    remove_thermal_noise=thermal.isChecked(), speckle_filter=speckle.currentText(),
+                    speckle_window=win.value(), dem_name=dem.currentText(),
+                    external_dem=dem_file.text().strip() or None, pixel_spacing_m=spacing.value(),
+                    map_projection=proj.currentText(), subset_wkt=wkt, subset_mode="operator",
+                    nodata_at_sea=False, output_db=True)
+                params.validate(info)
+                sar_snap.check_dem_coverage(params, path)
+                result['value'] = (params, out_edit.text().strip())
+            except sar_snap.SnapError as exc:
+                QMessageBox.warning(dlg, "Please check the settings", str(exc))
+                return
+            self._snap_qsettings().setValue("snap/out_dir", out_edit.text().strip())
+            dlg.accept()
+        btns.accepted.connect(on_ok); btns.rejected.connect(dlg.reject)
+        if dlg.exec_() != QDialog.Accepted:
+            return None
+        return result.get('value')
+
+    def _set_db_layer(self, data, profile, file_name, polarisation="", date="", history=None):
+        """Make a sigma0-dB array the current SAR layer (used after SNAP and when loading a processed file)."""
+        valid = data[np.isfinite(data)]
+        crs = profile.get('crs')
+        pix = abs(profile['transform'].a)
+        unit = '°' if (crs is not None and crs.is_geographic) else ' m'
+        self.sar_steps = {
+            'dB': {
+                'data': data, 'profile': profile, 'stats': self._calculate_stats(data),
+                'vis_params': {'cmap': 'gray',
+                               'vmin': float(np.nanpercentile(valid, 2)) if valid.size else -25.0,
+                               'vmax': float(np.nanpercentile(valid, 98)) if valid.size else 0.0},
+                'metadata': {'file_name': file_name, 'acquisition_date': date, 'polarization': polarisation,
+                             'dimensions': f"{data.shape[1]}×{data.shape[0]}", 'resolution': f"{pix:.6g}{unit}",
+                             'data_type': 'float32 (σ₀, dB)', 'crs': crs.to_string() if crs is not None else 'Unknown',
+                             'processing_history': history or []},
+            }
+        }
+        self._display_sar_layer('dB')
+
+    def load_processed_db(self):
+        """Load a σ₀ dB GeoTIFF produced earlier by SNAP (no need to run SNAP again)."""
+        try:
+            path, _ = QFileDialog.getOpenFileName(self, "Open processed σ₀ dB GeoTIFF", "", "GeoTIFF (*.tif *.tiff)")
+            if not path:
+                return
+            data, profile = sar_snap.read_geotiff(path)
+            warnings = sar_snap.sanity_check_db(data)
+            self._set_db_layer(data, profile, os.path.basename(path), history=["loaded from file"])
+            self.layer_list.addItem(QListWidgetItem(f"📈 σ₀ dB ({os.path.basename(path)})"))
+            self._reset_workflow()
+            self._enable_next_step('snap')
+            if warnings:
+                QMessageBox.warning(self, "Check the data", "\n".join(warnings))
+        except Exception as exc:
+            self.show_error(f"Could not load the file: {exc}")
+
+    def analyze_histogram(self):
+        """Step 3: choose ONE water threshold (dB) with a histogram, a preview and a sensitivity table."""
+        try:
+            if 'dB' not in self.sar_steps:
+                raise ValueError("Run SNAP preprocessing (step 2) or load a processed dB file first.")
+            data = self.sar_steps['dB']['data']
+            valid_mask = np.isfinite(data) & (data != 0.0)
+            vals = data[valid_mask]
+            if vals.size == 0:
+                raise ValueError("The layer has no valid pixels.")
+
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Water threshold (σ₀ dB)")
+            dlg.setMinimumSize(900, 650)
+            lay = QVBoxLayout(dlg)
+            fig = Figure(figsize=(8, 4)); canvas = FigureCanvas(fig)
+            lay.addWidget(NavigationToolbar(canvas, dlg)); lay.addWidget(canvas)
+            form = QFormLayout()
+            method = QComboBox()
+            method.addItems(["Tile-based bimodal (recommended)", "Fixed threshold", "Global Otsu (unreliable if water is a small part)"])
+            thr_spin = QDoubleSpinBox(); thr_spin.setRange(-50.0, 10.0); thr_spin.setDecimals(2); thr_spin.setValue(-15.0)
+            minpx = QSpinBox(); minpx.setRange(1, 100000); minpx.setValue(100)
+            form.addRow("Method:", method); form.addRow("Threshold (dB):", thr_spin); form.addRow("Remove water objects smaller than (pixels):", minpx)
+            lay.addLayout(form)
+            info_box = QTextEdit(); info_box.setReadOnly(True); info_box.setFixedHeight(130)
+            lay.addWidget(info_box)
+            sample = vals if vals.size <= 3_000_000 else np.random.default_rng(0).choice(vals, 3_000_000, replace=False)
+
+            def redraw():
+                thr = thr_spin.value()
+                fig.clf(); ax = fig.add_subplot(111)
+                ax.hist(sample, bins=200, color='#7f8c8d')
+                ax.axvline(thr, color='red', linestyle='--', label=f'threshold {thr:.2f} dB')
+                ax.set_xlabel('σ₀ (dB)'); ax.set_ylabel('pixels'); ax.legend()
+                canvas.draw()
+                pct = lambda t: 100.0 * float(np.mean(sample < t))
+                txt = [f"Pixels below {thr:.2f} dB: {pct(thr):.1f}% (before removing small objects)",
+                       "Sensitivity (% of valid pixels below): " + "   ".join(f"{t:.0f} dB: {pct(t):.1f}%" for t in (-12, -14, -16, -18, -20))]
+                if thr > -10 or pct(thr) > 40:
+                    txt.append("WARNING: this threshold is above typical open-water backscatter (about -15 to -25 dB in VV) "
+                               "or labels a very large share as water.")
+                info_box.setPlainText("\n".join(txt))
+
+            def compute():
+                QApplication.setOverrideCursor(Qt.WaitCursor)
+                try:
+                    if method.currentIndex() == 0:
+                        thr, ti = water_mapping.tile_bimodal_threshold(data)
+                        msg = f"Bimodal tiles used: {ti['tiles_used']} of {ti['tiles_tested']}"
+                    elif method.currentIndex() == 2:
+                        thr = water_mapping.otsu_water_threshold(data); msg = "Global Otsu"
+                    else:
+                        return
+                    thr_spin.setValue(float(np.clip(thr, -50.0, 10.0)))
+                    self.show_status(f"Threshold {thr:.2f} dB ({msg})", 8000)
+                except ValueError as exc:
+                    QMessageBox.warning(dlg, "Cannot compute", str(exc))
+                finally:
+                    QApplication.restoreOverrideCursor()
+                redraw()
+
+            btns = QDialogButtonBox()
+            comp_btn = btns.addButton("Compute", QDialogButtonBox.ActionRole)
+            ok_btn = btns.addButton("Use this threshold", QDialogButtonBox.AcceptRole)
+            btns.addButton(QDialogButtonBox.Cancel)
+            comp_btn.clicked.connect(compute); thr_spin.valueChanged.connect(lambda _: redraw())
+            btns.accepted.connect(dlg.accept); btns.rejected.connect(dlg.reject)
+            lay.addWidget(btns)
+            redraw()
+            if dlg.exec_() != QDialog.Accepted:
+                return
+            thr = thr_spin.value()
+            self.sar_steps['dB']['metadata']['thresholds'] = {
+                'lower': float(np.min(vals)), 'upper': float(thr), 'threshold_db': float(thr),
+                'method': method.currentText(), 'min_pixels': int(minpx.value())}
+            self._enable_next_step('analyze')
+            self.show_status(f"Water threshold set to {thr:.2f} dB. Next: 4. Classify Water", 8000)
+        except Exception as exc:
+            self.show_error(f"Threshold selection failed: {exc}")
+
+    def classify_water(self):
+        """Step 4: water = backscatter below the chosen threshold (dB), small objects removed."""
+        try:
+            md = self.sar_steps.get('dB', {}).get('metadata', {})
+            if 'thresholds' not in md:
+                raise ValueError("Choose the water threshold first (step 3).")
+            th = md['thresholds']
+            data = self.sar_steps['dB']['data']
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                mask, info = water_mapping.map_water(data, "fixed", threshold=th['threshold_db'], min_pixels=th.get('min_pixels', 100))
+            finally:
+                QApplication.restoreOverrideCursor()
+            valid = np.isfinite(data) & (data != 0.0)
+            profile = self.sar_steps['dB']['profile']
+            geographic = profile['crs'] is not None and profile['crs'].is_geographic
+            lat = (profile['transform'].f + profile['transform'].f + profile['transform'].e * data.shape[0]) / 2
+            area = flood.pixel_area_m2(profile['transform'], geographic, lat)
+            ha = info['water_pixels'] * area / 1e4
+            self.sar_steps['classification'] = {'mask': mask, 'valid': valid, 'thresholds': th, 'info': info}
+
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Water classification")
+            dlg.setMinimumSize(1100, 720)
+            lay = QVBoxLayout(dlg)
+            fig = Figure(figsize=(12, 6)); canvas = FigureCanvas(fig)
+            lay.addWidget(NavigationToolbar(canvas, dlg)); lay.addWidget(canvas)
+            ax1 = fig.add_subplot(121)
+            im, _s1 = georef.draw_raster(ax1, np.ma.masked_invalid(np.where(valid, data, np.nan)), profile, cmap='gray',
+                                         vmin=info.get('db_p2', -25), vmax=info.get('db_p98', 0))
+            ax1.set_title("σ₀ (dB)"); fig.colorbar(im, ax=ax1, fraction=0.04)
+            ax2 = fig.add_subplot(122)
+            show = np.where(valid, mask.astype(float), np.nan)
+            georef.draw_raster(ax2, np.ma.masked_invalid(show), profile, cmap='Blues', vmin=0, vmax=1.4)
+            ax2.set_title(f"Water (threshold {th['threshold_db']:.2f} dB)")
+            canvas.draw()
+            box = QTextEdit(); box.setReadOnly(True); box.setFixedHeight(120)
+            lines = [f"Threshold: {th['threshold_db']:.2f} dB   ({th['method']})",
+                     f"Water pixels: {info['water_pixels']:,} of {info['valid_pixels']:,} valid ({info['water_percent']:.2f}%)",
+                     f"Approximate water area: {ha:,.1f} ha  ({ha / 100:,.2f} km²)  [pixel ~ {area:.1f} m²]",
+                     "Not validated against a reference mask."]
+            if info.get('warning'):
+                lines.append("WARNING: " + info['warning'])
+            box.setPlainText("\n".join(lines)); lay.addWidget(box)
+            btns = QDialogButtonBox()
+            save_btn = btns.addButton("Save water mask (GeoTIFF)...", QDialogButtonBox.ActionRole)
+            btns.addButton("Close", QDialogButtonBox.RejectRole)
+            save_btn.clicked.connect(lambda: self._save_water_mask(mask, valid))
+            btns.rejected.connect(dlg.reject)
+            lay.addWidget(btns)
+            dlg.exec_()
+        except Exception as exc:
+            self.show_error(f"Classification failed: {exc}")
+
+    def _save_water_mask(self, mask, valid):
+        try:
+            import rasterio
+            path, _ = QFileDialog.getSaveFileName(self, "Save water mask", "", "GeoTIFF (*.tif)")
+            if not path:
+                return
+            prof = self.sar_steps['dB']['profile'].copy()
+            prof.update(driver="GTiff", count=1, dtype="uint8", nodata=255, compress="lzw")
+            with rasterio.open(path, "w", **prof) as dst:
+                dst.write(np.where(valid, mask, 255).astype("uint8"), 1)
+            self.show_status(f"Saved {path}  (0 = land, 1 = water, 255 = no data)", 8000)
+            st = self._snap_qsettings()
+            st.setValue("val/raster", path); st.setValue("val/groups", "water:1;land:0")
+        except Exception as exc:
+            self.show_error(f"Could not save the mask: {exc}")
+
+    def flood_mapping(self):
+        """Step 5: flood extent from a BEFORE and an AFTER σ₀ dB GeoTIFF of the same track."""
+        try:
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Flood mapping (before / after)")
+            form = QFormLayout(dlg)
+            settings = self._snap_qsettings()
+            before_e, after_e = QLineEdit(settings.value("flood/before", "", type=str)), QLineEdit(settings.value("flood/after", "", type=str))
+            out_e = QLineEdit(settings.value("flood/out", os.path.join(tempfile.gettempdir(), "SpaceGeoVision_flood"), type=str))
+
+            def row(edit, title, folder=False):
+                btn = QPushButton("Browse..."); r = QHBoxLayout(); r.addWidget(edit); r.addWidget(btn)
+                def pick():
+                    p = QFileDialog.getExistingDirectory(dlg, title, edit.text()) if folder else \
+                        QFileDialog.getOpenFileName(dlg, title, edit.text(), "GeoTIFF (*.tif *.tiff)")[0]
+                    if p:
+                        edit.setText(p)
+                btn.clicked.connect(pick)
+                return r
+            auto = QCheckBox("Common threshold from both images (recommended)"); auto.setChecked(True)
+            thr = QDoubleSpinBox(); thr.setRange(-50, 10); thr.setValue(-14.0); thr.setSuffix(" dB"); thr.setEnabled(False)
+            auto.toggled.connect(lambda on: thr.setEnabled(not on))
+            drop = QDoubleSpinBox(); drop.setRange(0, 15); drop.setValue(3.0); drop.setSuffix(" dB")
+            minpx = QSpinBox(); minpx.setRange(1, 100000); minpx.setValue(100)
+            form.addRow("BEFORE image (σ₀ dB GeoTIFF):", row(before_e, "Before image"))
+            form.addRow("AFTER image (σ₀ dB GeoTIFF):", row(after_e, "After image"))
+            form.addRow("Output folder:", row(out_e, "Output folder", True))
+            form.addRow("", auto); form.addRow("Fixed threshold:", thr)
+            form.addRow("Required backscatter drop (0 = off):", drop); form.addRow("Min. object size (pixels):", minpx)
+            form.addRow(QLabel("Both images must come from the SAME relative orbit and be processed with the same settings."))
+            btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            btns.accepted.connect(dlg.accept); btns.rejected.connect(dlg.reject); form.addRow(btns)
+            if dlg.exec_() != QDialog.Accepted:
+                return
+            for label, e in (("BEFORE", before_e), ("AFTER", after_e)):
+                if not os.path.isfile(e.text().strip()):
+                    raise ValueError(f"Please choose the {label} GeoTIFF.")
+            settings.setValue("flood/before", before_e.text().strip()); settings.setValue("flood/after", after_e.text().strip())
+            settings.setValue("flood/out", out_e.text().strip())
+            args = (before_e.text().strip(), after_e.text().strip(), out_e.text().strip(),
+                    None if auto.isChecked() else thr.value(), drop.value(), minpx.value())
+            self._flood_progress = QProgressDialog("Starting...", None, 0, 100, self)
+            self._flood_progress.setWindowTitle("Flood mapping")
+            self._flood_progress.setWindowModality(Qt.WindowModal)
+            self._flood_progress.setMinimumDuration(0)
+            worker = FuncWorker(lambda progress: flood.run_flood_db(*args, progress=progress))
+            worker.progress.connect(lambda v, m: (self._flood_progress.setValue(v), self._flood_progress.setLabelText(m)))
+            worker.done.connect(self._on_flood_done)
+            worker.failed.connect(lambda m: (self._flood_progress.close(), self.show_error(f"Flood mapping failed:\n{m}")))
+            self._flood_worker = worker
+            worker.start()
+        except Exception as exc:
+            self.show_error(f"Cannot start flood mapping: {exc}")
+
+    def _on_flood_done(self, res):
+        self._flood_progress.close()
+        st = self._snap_qsettings()
+        st.setValue("val/raster", res["paths"]["flood_classes"]); st.setValue("val/groups", "flood:2;not_flood:0,1,3,4")
+        from matplotlib.colors import ListedColormap
+        cls = res["classes"]
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Flood extent")
+        dlg.setMinimumSize(1100, 760)
+        lay = QVBoxLayout(dlg)
+        fig = Figure(figsize=(11, 6)); canvas = FigureCanvas(fig)
+        lay.addWidget(NavigationToolbar(canvas, dlg)); lay.addWidget(canvas)
+        ax = fig.add_subplot(111)
+        cmap = ListedColormap([flood.CLASS_COLOURS[k] for k in (0, 1, 2, 3, 4)])
+        show = np.where(cls == 255, np.nan, cls.astype(float))
+        georef.draw_raster(ax, np.ma.masked_invalid(show), res.get("profile"), cmap=cmap, vmin=-0.5, vmax=4.5,
+                           interpolation='nearest')
+        ax.set_title("Flood extent: grey land | blue permanent water | red flooded | green receded | orange uncertain")
+        canvas.draw()
+        box = QTextEdit(); box.setReadOnly(True); box.setFontFamily("Courier New"); box.setFixedHeight(230)
+        box.setPlainText(res["report"] + "\n\nFiles:\n  " + "\n  ".join(res["paths"].values()))
+        lay.addWidget(box)
+        ok = QDialogButtonBox(QDialogButtonBox.Ok); ok.accepted.connect(dlg.accept); lay.addWidget(ok)
+        dlg.exec_()
+
+    # ======================================================================
+    # Validation menu: independent accuracy assessment of any classified map
+    # ======================================================================
+    def _browse_row(self, dlg, edit, title, filt="", folder=False):
+        """Line edit + Browse button row used by the validation dialogs."""
+        btn = QPushButton("Browse...")
+        row = QHBoxLayout(); row.addWidget(edit); row.addWidget(btn)
+
+        def pick():
+            if folder:
+                p = QFileDialog.getExistingDirectory(dlg, title, edit.text())
+            else:
+                p, _ = QFileDialog.getOpenFileName(dlg, title, edit.text(), filt)
+            if p:
+                edit.setText(p)
+        btn.clicked.connect(pick)
+        return row
+
+    def validation_sample_points(self):
+        """Step 1 of validation: random points in every class of a classified map, to be labelled BLIND."""
+        try:
+            st = self._snap_qsettings()
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Validation 1: create sampling points")
+            dlg.setMinimumWidth(640)
+            form = QFormLayout(dlg)
+            raster_e = QLineEdit(st.value("val/raster", "", type=str))
+            out_e = QLineEdit(st.value("val/out", os.path.join(tempfile.gettempdir(), "SpaceGeoVision_validation"), type=str))
+            counts_e = QLineEdit(); counts_e.setPlaceholderText('points per class, e.g. 0=100,1=50,2=100')
+            seed = QSpinBox(); seed.setRange(0, 10_000_000); seed.setValue(42)
+            mind = QSpinBox(); mind.setRange(1, 500); mind.setValue(5); mind.setSuffix(" px")
+            info = QLabel(""); info.setWordWrap(True)
+            detect = QPushButton("Detect classes in the map")
+            groups_e = QLineEdit(st.value("val/groups", "flood:2;not_flood:0,1,3,4", type=str))
+            groups_e.setToolTip("Reference categories you will label with, and which map classes each one merges. "
+                                "Works for any map: water:1;land:0   change:2,3;no_change:1   urban:1;forest:2;crops:3;bare:4 ...")
+            preset = QComboBox(); preset.addItems(list(validation.PRESETS) + ["One category per map class", "Custom"])
+            def on_preset(i):
+                names = list(validation.PRESETS)
+                if i < len(names):
+                    groups_e.setText(validation.PRESETS[names[i]])
+                elif i == len(names):
+                    try:
+                        groups_e.setText(validation.groups_for_classes(list(validation.raster_classes(raster_e.text().strip()))))
+                    except Exception as exc:
+                        QMessageBox.warning(dlg, "Cannot read the map", str(exc))
+            preset.currentIndexChanged.connect(on_preset)
+            preset.setCurrentIndex(preset.count() - 1)
+
+            def do_detect():
+                try:
+                    cls = validation.raster_classes(raster_e.text().strip())
+                    counts_e.setText(",".join(f"{c}={100 if n > 5000 else 50}" for c, n in cls.items()))
+                    try:
+                        covered = {c for cs in validation.parse_groups(groups_e.text()).values() for c in cs}
+                    except Exception:
+                        covered = set()
+                    if not set(cls) <= covered:   # the current categories do not describe this map: one category per class
+                        groups_e.setText(validation.groups_for_classes(list(cls)))
+                    info.setText("Classes found (value: pixels):  " + "   ".join(f"{c}: {n:,}" for c, n in cls.items()) +
+                                 "\nAt least 50 points per class (100 for the most important) is advisable. Rare classes need their own points.")
+                except Exception as exc:
+                    QMessageBox.warning(dlg, "Cannot read the map", str(exc))
+            detect.clicked.connect(do_detect)
+            form.addRow("Classified map (GeoTIFF):", self._browse_row(dlg, raster_e, "Classified map", "GeoTIFF (*.tif *.tiff)"))
+            form.addRow("", detect); form.addRow(info)
+            form.addRow("Points per class:", counts_e); form.addRow("Random seed:", seed); form.addRow("Minimum distance:", mind)
+            form.addRow("Map type (preset):", preset)
+            form.addRow("Categories to label:", groups_e)
+            form.addRow(QLabel("Categories name what the analyst will write in ref_label and merge map classes: name:class,class;name2:class . "
+                               "They are saved with the points, so labelling and accuracy use the same names."))
+            form.addRow("Output folder:", self._browse_row(dlg, out_e, "Output folder", folder=True))
+            form.addRow(QLabel("Then open points_to_label.csv (or the GeoJSON) in QGIS and fill ref_label for every point from reference\n"
+                               "imagery WITHOUT looking at the map. points_key.csv holds the map classes: do not open it while labelling."))
+            btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            btns.accepted.connect(dlg.accept); btns.rejected.connect(dlg.reject); form.addRow(btns)
+            if dlg.exec_() != QDialog.Accepted:
+                return
+            if not os.path.isfile(raster_e.text().strip()):
+                raise ValueError("Please choose the classified map.")
+            counts = validation.parse_counts(counts_e.text())
+            groups_spec = groups_e.text().strip()
+            groups = validation.parse_groups(groups_spec)
+            missing = sorted(set(counts) - {c for cs in groups.values() for c in cs})
+            if missing:
+                raise ValueError(f"Map classes {missing} get points but belong to no category. Add them to 'Categories to label' "
+                                 f"or remove them from 'Points per class'.")
+            st.setValue("val/raster", raster_e.text().strip()); st.setValue("val/out", out_e.text().strip())
+            st.setValue("val/groups", groups_spec)
+            args = (raster_e.text().strip(), out_e.text().strip(), counts, seed.value(), 255, mind.value())
+            self._start_validation_job(lambda progress: validation.make_sampling_from_raster(*args, progress=progress, groups_spec=groups_spec),
+                                       self._on_sampling_done, "Creating sampling points")
+        except Exception as exc:
+            self.show_error(f"Cannot create sampling points: {exc}")
+
+    def validation_shuffle_points(self):
+        """New blind copy of an existing sample: random order, new ids, empty labels, id_map.csv to compare passes."""
+        try:
+            st = self._snap_qsettings()
+            start = st.value("val/out", "", type=str)
+            lab, _ = QFileDialog.getOpenFileName(self, "Choose the points_to_label.csv to shuffle", start, "CSV (*.csv)")
+            if not lab:
+                return
+            key = os.path.join(os.path.dirname(lab), "points_key.csv")
+            if not os.path.isfile(key):
+                key, _ = QFileDialog.getOpenFileName(self, "Choose the matching points_key.csv", os.path.dirname(lab), "CSV (*.csv)")
+                if not key:
+                    return
+            out = os.path.join(os.path.dirname(lab), "shuffled_" + time.strftime("%Y%m%d_%H%M%S"))
+            res = validation.shuffle_points(lab, key, out)
+            st.setValue("val/out", out)
+            QMessageBox.information(
+                self, "Shuffled copy created",
+                f"{res['n']} points in random order, new ids, empty labels.\n\nFolder:\n  {out}\n\n"
+                "Label THIS copy (Validation > 1b, or the .kml / .csv inside it) and use its points_key.csv in step 2. "
+                "id_map.csv links the new ids to the old ones, so two labelling passes can be compared.")
+        except Exception as exc:
+            self.show_error(f"Cannot shuffle the points: {exc}")
+
+    def validation_label_points(self):
+        """Label the sampling points inside the app: reference-image chips, links to Google Earth / Wayback, autosave."""
+        try:
+            import labeler_ui
+            st = self._snap_qsettings()
+            out = st.value("val/out", "", type=str)
+            csv_path = os.path.join(out, "points_to_label.csv") if out else ""
+            try:   # fallback only: the scheme saved beside the points (or the labels already in the file) takes precedence
+                names = list(validation.parse_groups(st.value("val/groups", "", type=str)))
+            except Exception:
+                names = []
+            self._label_dlg = labeler_ui.LabelPointsDialog(self, csv_path if os.path.isfile(csv_path) else "", ",".join(names))
+            self._label_dlg.show()
+        except Exception as exc:
+            logging.exception("validation_label_points failed")
+            self.show_error(f"Cannot open the labelling window: {exc}")
+
+    def validation_accuracy(self):
+        """Step 2 of validation: accuracy and area estimates from the labelled points."""
+        try:
+            st = self._snap_qsettings()
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Validation 2: compute accuracy")
+            dlg.setMinimumWidth(680)
+            form = QFormLayout(dlg)
+            raster_e = QLineEdit(st.value("val/raster", "", type=str))
+            labels_e = QLineEdit(st.value("val/labels", "", type=str)); key_e = QLineEdit(st.value("val/key", "", type=str))
+            out_e = QLineEdit(st.value("val/out", os.path.join(tempfile.gettempdir(), "SpaceGeoVision_validation"), type=str))
+            sch0 = validation.read_scheme(labels_e.text().strip()) if labels_e.text().strip() else None
+            groups_e = QLineEdit(sch0["groups"] if sch0 else st.value("val/groups", "flood:2;not_flood:0,1,3,4", type=str))
+            def on_labels_changed(txt):   # the categories chosen when the points were created follow the points file
+                s = validation.read_scheme(txt.strip()) if txt.strip() else None
+                if s:
+                    groups_e.setText(s["groups"])
+            labels_e.textChanged.connect(on_labels_changed)
+            form.addRow("Classified map (GeoTIFF):", self._browse_row(dlg, raster_e, "Classified map", "GeoTIFF (*.tif *.tiff)"))
+            form.addRow("Labelled points (CSV):", self._browse_row(dlg, labels_e, "points_to_label.csv", "CSV (*.csv)"))
+            form.addRow("Key file (points_key.csv):", self._browse_row(dlg, key_e, "points_key.csv", "CSV (*.csv)"))
+            preset = QComboBox(); preset.addItems(list(validation.PRESETS) + ["One category per map class", "Custom"])
+            def on_acc_preset(i):
+                names = list(validation.PRESETS)
+                if i < len(names):
+                    groups_e.setText(validation.PRESETS[names[i]])
+                elif i == len(names):
+                    try:
+                        groups_e.setText(validation.groups_for_classes(list(validation.raster_classes(raster_e.text().strip()))))
+                    except Exception as exc:
+                        QMessageBox.warning(dlg, "Cannot read the map", str(exc))
+            preset.currentIndexChanged.connect(on_acc_preset)
+            preset.setCurrentIndex(preset.count() - 1)
+            form.addRow("Map type (preset):", preset)
+            form.addRow("Categories:", groups_e)
+            form.addRow(QLabel("Categories group map classes, e.g.  flood:2;not_flood:0,1,3,4  or  water:1;land:0  or  urban:1;forest:2;bare:3 .\n"
+                               "The ref_label values in the CSV must be these names (case ignored); 'uncertain' or blank is excluded."))
+            form.addRow("Output folder:", self._browse_row(dlg, out_e, "Output folder", folder=True))
+            score_e = QLineEdit(st.value("val/score", "", type=str))
+            target_e = QLineEdit(st.value("val/target", "", type=str)); target_e.setPlaceholderText("e.g. water  (category that is the target)")
+            low_c = QCheckBox("Low values of the layer mean the target (e.g. water in dB)"); low_c.setChecked(st.value("val/low", True, type=bool))
+            form.addRow(QLabel("Optional - ROC / precision-recall curves: a continuous layer on the SAME grid as the map (e.g. the sigma0-dB image, or the change magnitude)"))
+            form.addRow("Layer (GeoTIFF):", self._browse_row(dlg, score_e, "Continuous layer", "GeoTIFF (*.tif *.tiff)"))
+            form.addRow("Target category:", target_e); form.addRow("", low_c)
+            btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            btns.accepted.connect(dlg.accept); btns.rejected.connect(dlg.reject); form.addRow(btns)
+            if dlg.exec_() != QDialog.Accepted:
+                return
+            for label, e in (("classified map", raster_e), ("labelled points", labels_e), ("key file", key_e)):
+                if not os.path.isfile(e.text().strip()):
+                    raise ValueError(f"Please choose the {label} file.")
+            groups = validation.parse_groups(groups_e.text())
+            for k, e in (("val/raster", raster_e), ("val/labels", labels_e), ("val/key", key_e), ("val/out", out_e), ("val/groups", groups_e)):
+                st.setValue(k, e.text().strip())
+            args = (raster_e.text().strip(), labels_e.text().strip(), key_e.text().strip(), groups, out_e.text().strip())
+            score, target = score_e.text().strip(), target_e.text().strip()
+            for k, v in (("val/score", score), ("val/target", target)):
+                st.setValue(k, v)
+            st.setValue("val/low", low_c.isChecked())
+            if score and not target:
+                raise ValueError("Give the target category (e.g. water) to draw the curves, or clear the layer field.")
+            low = low_c.isChecked()
+
+            def job(progress):
+                res = validation.validate_from_files(*args, progress=progress)
+                if score:
+                    progress(90, "ROC / precision-recall curves")
+                    cur = validation.validate_curves_from_files(score, args[1], args[2], args[0], groups,
+                                                                [s.strip() for s in target.split(",") if s.strip()], args[4], low_is_positive=low)
+                    res["report"] += "\n\n" + cur["report"]; res["curves"] = cur["files"]
+                return res
+            self._start_validation_job(job, self._on_validation_done, "Computing accuracy")
+        except Exception as exc:
+            self.show_error(f"Cannot compute accuracy: {exc}")
+
+    def _start_validation_job(self, fn, on_done, title):
+        self._val_progress = QProgressDialog("Starting...", None, 0, 100, self)
+        self._val_progress.setWindowTitle(title)
+        self._val_progress.setWindowModality(Qt.WindowModal)
+        self._val_progress.setMinimumDuration(0)
+        worker = FuncWorker(fn)
+        worker.progress.connect(lambda v, m: (self._val_progress.setValue(v), self._val_progress.setLabelText(m)))
+        worker.done.connect(on_done)
+        worker.failed.connect(lambda m: (self._val_progress.close(), self.show_error(f"{title} failed:\n{m}")))
+        self._val_worker = worker
+        worker.start()
+
+    def _on_sampling_done(self, res):
+        self._val_progress.close()
+        QMessageBox.information(
+            self, "Sampling points created",
+            f"{res['n']} points {res['per_class']}\n\nFiles:\n  " + "\n  ".join(res['files'].values()) +
+            "\n\nNext: label the points - either in the app (Validation > 1b. Label Points in the App) or in Google Earth Pro "
+            "(open the .kml and use its Historical Imagery slider) and write ref_label in the CSV - without looking at the map. "
+            "Then use Validation > 2. Compute Accuracy.")
+        if res['files'].get('kml') and QMessageBox.question(
+                self, "Google Earth", "Open the points in Google Earth now (if Google Earth Pro is installed)?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
+            try:
+                if hasattr(os, 'startfile'):
+                    os.startfile(res['files']['kml'])
+                else:
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(res['files']['kml']))
+            except Exception as exc:
+                self.show_error(f"Could not open the KML: {exc}")
+
+    def _on_validation_done(self, res):
+        self._val_progress.close()
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Accuracy assessment (area-adjusted, from labelled sample points)")
+        dlg.setMinimumSize(900, 520)
+        lay = QVBoxLayout(dlg)
+        box = QTextEdit(); box.setReadOnly(True); box.setFontFamily("Courier New")
+        box.setPlainText(res["report"] + "\n\nSaved: " + res["report_path"] + ("\n       " + "\n       ".join(res["curves"].values()) if res.get("curves") else ""))
+        lay.addWidget(box)
+        ok = QDialogButtonBox(QDialogButtonBox.Ok); ok.accepted.connect(dlg.accept); lay.addWidget(ok)
+        dlg.exec_()
+
+    def _snap_qsettings(self):
+        return QSettings("SpaceGeoVision", "SpaceGeoVision")
+
+    def _get_gpt(self, ask=True):
+        """Return the gpt path (settings, $SNAP_GPT, PATH, default folders) or None."""
+        saved = self._snap_qsettings().value("snap/gpt_path", "", type=str) or None
+        try:
+            return sar_snap.find_gpt(saved)
+        except sar_snap.SnapError as exc:
+            if ask:
+                self.show_error(str(exc))
+            return None
+
+    def snap_settings(self):
+        """Let the user point to SNAP's gpt executable and test it."""
+        current = self._get_gpt(ask=False) or ""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select SNAP 'gpt' executable (…/snap/bin/gpt)", current, "gpt (gpt gpt.exe);;All Files (*)")
+        if not path:
+            return
+        try:
+            sar_snap.check_gpt(path)
+        except sar_snap.SnapError as exc:
+            self.show_error(f"This file does not run as SNAP gpt:\n{exc}")
+            return
+        self._snap_qsettings().setValue("snap/gpt_path", path)
+        self.show_status(f"SNAP gpt set to {path} (version: {sar_snap.snap_version(path)})", 8000)
 
     def start_sar_workflow(self):
-        """Load SAR image with enhanced metadata handling"""
+        """Step 1: choose the ORIGINAL Sentinel-1 GRD product (.zip or .SAFE folder)."""
         try:
-            self.current_sar_group = None
-            self.sar_steps = {}
-            self.input_file, _ = QFileDialog.getOpenFileName(  # Store directly to input_file
-                self, "Open SAR Image", "", 
-                "GeoTIFF Files (*.tif *.tiff);;All Files (*)"
-            )
-            if not self.input_file:  # Use the class attribute
+            box = QMessageBox(self)
+            box.setWindowTitle("Sentinel-1 product")
+            box.setText("Choose the original Sentinel-1 GRD product.\n"
+                        "GeoTIFF exports cannot be orbit-corrected or calibrated to σ₀.")
+            zip_btn = box.addButton("ZIP file...", QMessageBox.AcceptRole)
+            dir_btn = box.addButton(".SAFE folder...", QMessageBox.AcceptRole)
+            box.addButton(QMessageBox.Cancel)
+            box.exec_()
+            clicked = box.clickedButton()
+            if clicked is zip_btn:
+                path, _ = QFileDialog.getOpenFileName(self, "Open Sentinel-1 GRD ZIP", "", "Sentinel-1 ZIP (*.zip)")
+            elif clicked is dir_btn:
+                path = QFileDialog.getExistingDirectory(self, "Open Sentinel-1 .SAFE folder")
+            else:
                 return
-
-            with rasterio.open(self.input_file) as src:
-                raw_data = src.read(1)
-                self._validate_data_shape(raw_data)
-                
-                # Get metadata with fallback values
-                metadata = {
-                    'file_name': os.path.basename(self.input_file),
-                    'acquisition_date': src.tags().get('ACQUISITION_DATE') 
-                                    or src.tags().get('DATE_ACQUIRED') 
-                                    or 'Unknown',
-                    'polarization': src.tags().get('POLARIZATION') 
-                                or src.tags().get('POLARISATION') 
-                                or 'HH',
-                    'dimensions': f"{raw_data.shape[1]}×{raw_data.shape[0]}",
-                    'resolution': f"{src.res[0]:.2f} m",
-                    'data_type': str(raw_data.dtype),
-                    'crs': src.crs.to_string() if src.crs else 'Unknown',
-                    'profile': src.profile  # Store profile for export
-                }
-
-                # Handle no-data values
-                nodata = src.nodata
-                if nodata is not None:
-                    raw_data = np.where(raw_data == nodata, np.nan, raw_data)
-
-                # Calculate visualization parameters
-                valid_data = raw_data[np.isfinite(raw_data)]
-                vmin = np.percentile(valid_data, 2) if valid_data.size > 0 else 0
-                vmax = np.percentile(valid_data, 98) if valid_data.size > 0 else 1
-
-                self.sar_steps['Original'] = {
-                    'data': raw_data,
-                    'profile': src.profile,
-                    'metadata': metadata,
-                    'vis_params': {
-                        'cmap': 'gray',
-                        'vmin': vmin,
-                        'vmax': vmax
-                    },
-                    'stats': self._calculate_stats(raw_data)
-                }
-
-            self._display_sar_layer('Original')
+            if not path:
+                return
+            info = sar_snap.parse_product_name(path)
+            self.sar_product = info
+            try:
+                self.sar_footprint = sar_snap.read_footprint(path)
+            except sar_snap.SnapError:
+                self.sar_footprint = None
+            self.sar_steps = {}
+            self.current_sar_group = 'sentinel1'
+            self._reset_workflow()
+            self.info_box.setText(
+                "🛰 Sentinel-1 product selected\n"
+                f"• File: {os.path.basename(path)}\n"
+                f"• Mission: {info.mission}   Mode: {info.mode}   Type: {info.product_type}\n"
+                f"• Polarisations: {', '.join(info.polarisations)}\n"
+                f"• Acquisition start: {info.start}\n\n"
+                "Next: SAR menu → 2. Run SNAP Preprocessing")
+            self.layer_list.addItem(QListWidgetItem(f"🛰 {os.path.basename(path)}"))
             self._enable_next_step('load')
-            self.layer_list.addItem(
-                QListWidgetItem(f"📡 {metadata['file_name']} (Original)")
-            )
-
-        except Exception as e:
-            self.show_error(f"SAR data loading failed: {str(e)}")
+        except sar_snap.SnapError as exc:
+            self.show_error(str(exc))
+            self._reset_workflow()
+        except Exception as exc:
+            self.show_error(f"Could not read the product: {exc}")
             self._reset_workflow()
 
-    def apply_orbit_file(self):
-        """Apply precise orbit file to SAR data"""
+    def run_snap_preprocessing(self):
+        """Step 2: run the whole SNAP chain in a background thread."""
         try:
-            if 'Original' not in self.sar_steps:
-                raise ValueError("Load SAR data first")
-
-            # Create orbit file selection dialog
-            orbit_dialog = QDialog(self)
-            orbit_dialog.setWindowTitle("Orbit File Parameters")
-            layout = QFormLayout(orbit_dialog)
-
-            # Orbit source selection
-            source_combo = QComboBox()
-            source_combo.addItems(["Auto Download", "Manual Selection"])
-            layout.addRow("Orbit Source:", source_combo)
-
-            # File selection for manual mode
-            file_edit = QLineEdit()
-            file_btn = QPushButton("Browse...")
-            file_layout = QHBoxLayout()
-            file_layout.addWidget(file_edit)
-            file_layout.addWidget(file_btn)
-            layout.addRow("Orbit File:", file_layout)
-            file_edit.setEnabled(False)
-            file_btn.setEnabled(False)
-
-            def update_orbit_ui(text):
-                manual_mode = text == "Manual Selection"
-                file_edit.setEnabled(manual_mode)
-                file_btn.setEnabled(manual_mode)
-                
-            source_combo.currentTextChanged.connect(update_orbit_ui)
-            update_orbit_ui(source_combo.currentText())
-
-            # Dialog buttons
-            btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            btn_box.accepted.connect(orbit_dialog.accept)
-            btn_box.rejected.connect(orbit_dialog.reject)
-            layout.addRow(btn_box)
-
-            if orbit_dialog.exec_() != QDialog.Accepted:
+            if self.sar_product is None:
+                raise ValueError("Select a Sentinel-1 product first (step 1).")
+            if self.snap_worker is not None and self.snap_worker.isRunning():
+                raise ValueError("A SNAP job is already running.")
+            gpt = self._get_gpt()
+            if not gpt:
                 return
-
-            # Apply orbit file logic
-            with rasterio.open(self.input_file) as src:
-                raw_data = src.read(1)
-                profile = src.profile
-                metadata = src.tags()
-
-            # Store orbit-corrected data
-            self.sar_steps['Orbit'] = {
-                'data': raw_data,  # In real implementation, apply actual orbit correction
-                'profile': profile,
-                'metadata': {
-                    **metadata,
-                    'orbit_applied': True,
-                    'orbit_source': source_combo.currentText()
-                }
-            }
-
-            self._enable_next_step('orbit')
-            self.layer_list.addItem(QListWidgetItem("🛰 Orbit Applied"))
-            self.statusBar().showMessage("Orbit file applied successfully", 5000)
-
-        except Exception as e:
-            self.show_error(f"Orbit file application failed: {str(e)}")
-
-    def calibrate(self):
-        """Calibrate to sigma nought (σ₀)"""
-        try:
-            if 'Orbit' not in self.sar_steps:
-                raise ValueError("Apply orbit file first")
-
-            # Get calibration parameters from metadata
-            metadata = self.sar_steps['Orbit']['metadata']
-            calibration_constant = float(metadata.get('CALIBRATION_CONSTANT', 1.0))
-
-            # Perform calibration
-            raw_data = self.sar_steps['Orbit']['data']
-            sigma0 = (raw_data ** 2) / calibration_constant
-
-            # Store calibrated data
-            self.sar_steps['Calibrated'] = {
-                'data': sigma0,
-                'profile': self.sar_steps['Orbit']['profile'],
-                'metadata': {
-                    **metadata,
-                    'calibration_type': 'σ₀',
-                    'calibration_constant': calibration_constant
-                }
-            }
-
-            self._enable_next_step('calibrate')
-            self.layer_list.addItem(QListWidgetItem("📏 Calibrated (σ₀)"))
-            self.statusBar().showMessage("Calibration to σ₀ completed", 5000)
-
-        except Exception as e:
-            self.show_error(f"Calibration failed: {str(e)}")
-
-    
-    def terrain_correction(self):
-        """Perform terrain correction using DEM"""
-        try:
-            if 'Filtered' not in self.sar_steps:
-                raise ValueError("Apply speckle filter first")
-
-            # DEM selection dialog
-            dem_dialog = QDialog(self)
-            dem_dialog.setWindowTitle("DEM Parameters")
-            layout = QFormLayout(dem_dialog)
-
-            # DEM source selection
-            dem_combo = QComboBox()
-            dem_combo.addItems(["Copernicus 30m DEM", "SRTM 90m", "Custom DEM"])
-            layout.addRow("DEM Source:", dem_combo)
-
-            # File selection for custom DEM
-            dem_file_edit = QLineEdit()
-            dem_file_btn = QPushButton("Browse...")
-            dem_file_layout = QHBoxLayout()
-            dem_file_layout.addWidget(dem_file_edit)
-            dem_file_layout.addWidget(dem_file_btn)
-            layout.addRow("DEM File:", dem_file_layout)
-            dem_file_edit.setEnabled(False)
-            dem_file_btn.setEnabled(False)
-
-            def update_dem_ui(text):
-                custom_mode = text == "Custom DEM"
-                dem_file_edit.setEnabled(custom_mode)
-                dem_file_btn.setEnabled(custom_mode)
-                
-            dem_combo.currentTextChanged.connect(update_dem_ui)
-            update_dem_ui(dem_combo.currentText())
-
-            # Dialog buttons
-            btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            btn_box.accepted.connect(dem_dialog.accept)
-            btn_box.rejected.connect(dem_dialog.reject)
-            layout.addRow(btn_box)
-
-            if dem_dialog.exec_() != QDialog.Accepted:
+            chosen = self._snap_dialog(self.sar_product)
+            if not chosen:
                 return
+            params, out_dir = chosen
+            heap_gb = max(4, int(psutil.virtual_memory().total / 2 ** 30 * 0.6))
 
-            # Perform terrain correction (simplified example)
-            filtered_data = self.sar_steps['Filtered']['data']
-            # In real implementation, use DEM for geometric correction
-            corrected_data = filtered_data  # Placeholder
+            self._snap_progress = QProgressDialog("Starting SNAP...", "Cancel", 0, 100, self)
+            self._snap_progress.setWindowTitle("SNAP preprocessing")
+            self._snap_progress.setWindowModality(Qt.WindowModal)
+            self._snap_progress.setMinimumDuration(0)
+            self._snap_progress.setValue(0)
 
-            # Store terrain-corrected data
-            self.sar_steps['Terrain'] = {
-                'data': corrected_data,
-                'profile': self.sar_steps['Filtered']['profile'],
-                'metadata': {
-                    **self.sar_steps['Filtered']['metadata'],
-                    'dem_source': dem_combo.currentText(),
-                    'correction_method': 'Range-Doppler'
-                }
-            }
+            worker = SnapWorker(self.sar_product.path, out_dir, params, gpt, heap_gb)
+            worker.progress.connect(lambda v, m: (self._snap_progress.setValue(v),
+                                                  self._snap_progress.setLabelText(m)))
+            worker.done.connect(self._on_snap_done)
+            worker.failed.connect(self._on_snap_failed)
+            self._snap_progress.canceled.connect(worker.cancel)
+            self.snap_worker = worker
+            worker.start()
+        except sar_snap.SnapError as exc:
+            self.show_error(str(exc))
+        except Exception as exc:
+            self.show_error(f"Cannot start SNAP preprocessing: {exc}")
 
-            self._enable_next_step('terrain')
-            self.layer_list.addItem(QListWidgetItem("🏔 Terrain Corrected"))
-            self.statusBar().showMessage("Terrain correction completed", 5000)
-
-        except Exception as e:
-            self.show_error(f"Terrain correction failed: {str(e)}")
-
-    
-    def _apply_speckle_filter(self, data, filter_type='Lee', window_size=3, snr_estimate=1.0, progress_callback=None):
-        """
-        Apply speckle reduction filter to SAR data with support for multiple algorithms
-        
-        Parameters:
-        - data: 2D numpy array of input SAR data
-        - filter_type: One of ['Lee', 'Gamma MAP', 'Frost', 'Median']
-        - window_size: Odd integer specifying filter window size
-        - snr_estimate: Signal-to-noise ratio estimate for Gamma MAP filter
-        - progress_callback: Function to report progress percentage
-        
-        Returns:
-        - 2D numpy array of filtered data
-        """
-        try:
-            # Validate inputs
-            if not isinstance(data, np.ndarray) or data.ndim != 2:
-                raise ValueError("Input must be 2D numpy array")
-                
-            if window_size % 2 == 0:
-                raise ValueError("Window size must be odd number")
-                
-            if filter_type not in ['Lee', 'Gamma MAP', 'Frost', 'Median', 'Refined Lee']: 
-                raise ValueError(f"Unsupported filter type: {filter_type}")
-
-            # Convert to float32 for processing
-            if data.dtype != np.float32:
-                data = data.astype(np.float32)
-
-            # Create output array and setup padding
-            pad_size = window_size // 2
-            filtered = np.empty_like(data)
-            padded_data = np.pad(data, pad_size, mode='reflect')
-            
-            # Pre-calculate window indices
-            rows, cols = data.shape
-            total_pixels = rows * cols
-            processed = 0
-
-            # Main processing loop
-            for i in range(rows):
-                for j in range(cols):
-                    if progress_callback and (processed % 1000 == 0):
-                        if not progress_callback(processed / total_pixels * 100):
-                            raise RuntimeError("Filtering canceled by user")
-                    
-                    # Extract window
-                    window = padded_data[i:i+window_size, j:j+window_size]
-                    valid_window = window[np.isfinite(window)]
-                    
-                    if valid_window.size == 0:
-                        filtered[i,j] = np.nan
-                        continue
-                    
-                    # Apply selected filter
-                    if filter_type == 'Lee':
-                        filtered[i,j] = self._apply_lee_filter(valid_window, window)
-                    elif filter_type == 'Gamma MAP':
-                        filtered[i,j] = self._apply_gamma_map_filter(valid_window, window, snr_estimate)
-                    elif filter_type == 'Frost':
-                        filtered[i,j] = self._apply_frost_filter(window, i, j, pad_size)
-                    elif filter_type == 'Median':
-                        filtered[i,j] = np.median(valid_window)
-                    elif filter_type == 'Refined Lee':
-                        filtered[i,j] = self._apply_refined_lee_filter(valid_window, window)
-                    
-                    processed += 1
-
-            return filtered
-
-        except Exception as e:
-            self.show_error(f"Filtering Error ({filter_type}): {str(e)}")
-            raise
-
-    # Helper methods for individual filters
-    def _apply_lee_filter(self, valid_window, window):
-        """Lee filter implementation"""
-        mean = np.mean(valid_window)
-        var = np.var(valid_window)
-        if var == 0:
-            return mean
-        k = var / (var + mean**2)
-        return mean + k * (window.mean() - mean)
-    
-    def _apply_refined_lee_filter(self, valid_window, window):
-        """Refined Lee filter implementation for SAR despeckling"""
-        # 1. Calculate initial statistics
-        mean = np.mean(valid_window)
-        var = np.var(valid_window)
-        
-        if var == 0:
-            return mean
-        
-        # 2. Compute coefficient of variation
-        cv = np.sqrt(var) / mean
-        cu = 1.0 / np.sqrt(9 * window.size)  # Threshold for homogeneous areas
-        
-        # 3. Determine region type and apply appropriate filtering
-        if cv <= cu:
-            # Homogeneous area - use mean value
-            return mean
+    def _on_snap_failed(self, message):
+        if getattr(self, '_snap_progress', None):
+            self._snap_progress.close()
+        if message == '__cancelled__':
+            self.show_status("SNAP preprocessing cancelled", 5000)
         else:
-            # Heterogeneous or edge area - use standard Lee filter
-            k = var / (var + mean**2)
-            return mean + k * (window.mean() - mean)
+            self.show_error(f"SNAP preprocessing failed:\n{message}")
 
-    def _apply_gamma_map_filter(self, valid_window, window, snr):
-        """Gamma Maximum A Posteriori filter"""
-        mean = np.mean(valid_window)
-        var = np.var(valid_window)
-        if var == 0:
-            return mean
-        enl = 1.0 / (var / (mean**2 + 1e-6))  # Equivalent Number of Looks
-        alpha = enl + 1 + (enl / snr)
-        return (alpha - enl - 1) * mean / alpha
-
-    def _apply_frost_filter(self, window, i, j, pad_size):
-        """Frost filter with exponential damping"""
-        center_value = window[pad_size, pad_size]
-        local_variance = np.var(window)
-        local_mean = np.mean(window)
-        
-        if local_variance == 0:
-            return local_mean
-            
-        k = 2 * local_variance / (local_mean**2 + 1e-6)
-        damping_factor = np.exp(-k * np.abs(window - center_value))
-        return np.sum(window * damping_factor) / np.sum(damping_factor)
-   
-    
-    def _validate_data_shape(self, data):
-        """Ensure data is proper 2D array"""
-        if data.ndim != 2:
-            raise ValueError(
-                f"Invalid data shape {data.shape}. "
-                "Expected 2D array (height, width).\n"
-                "Possible solutions:\n"
-                "1. Use src.read(1) instead of src.read()\n"
-                "2. Check input file structure\n"
-                "3. Verify image dimensions in metadata"
-            )
-    
-    def _add_to_layer_list(self, name, data):
-        """Safely add layer with data validation"""
-        if not isinstance(data, np.ndarray):
-            raise TypeError("Cannot add non-array data to layer list")
-            
-        item = QListWidgetItem(f"📡 {name}")
-        item.setData(Qt.UserRole, {
-            'type': 'SAR',
-            'raw_data': data,
-            'processed': False
-        })
-        self.layer_list.addItem(item)
-        self.layer_list.setCurrentItem(item)
-
-    def apply_filter(self):
-        """Apply speckle filter with full progress monitoring and optimized processing"""
+    def _on_snap_done(self, payload):
+        """Store the REAL SNAP output (sigma0 in dB, terrain-corrected) as the 'dB' step."""
         try:
-            self.filter_start_time = datetime.now()
-            # 1. Validate preconditions
-            if 'Original' not in self.sar_steps:
-                self.show_error("Please load SAR data first using 'Load SAR Data'")
-                return
-
-            # 2. Create parameter dialog
-            filter_dialog = QDialog(self)
-            filter_dialog.setWindowTitle("Filter Parameters")
-            layout = QFormLayout(filter_dialog)
-
-            # Filter type selection
-            filter_combo = QComboBox()
-            filter_combo.addItems(["Lee", "Frost", "Gamma MAP", "Median", "Refined Lee"])
-            layout.addRow("Filter Type:", filter_combo)
-
-            # Window size configuration
-            window_spin = QSpinBox()
-            window_spin.setRange(3, 15)
-            window_spin.setValue(5)
-            window_spin.setSingleStep(2)
-            layout.addRow("Window Size (odd):", window_spin)
-
-            # SNR estimation for Gamma MAP
-            snr_spin = QDoubleSpinBox()
-            snr_spin.setRange(0.1, 10.0)
-            snr_spin.setValue(1.0)
-            snr_spin.setSingleStep(0.1)
-            snr_spin.setVisible(False)
-            layout.addRow("SNR Estimate (Gamma):", snr_spin)
-
-            # UI updates for filter type
-            def update_filter_ui(text):
-                snr_spin.setVisible(text == "Gamma MAP")
-                window_spin.setEnabled(text not in ["Median"])
-                
-            filter_combo.currentTextChanged.connect(update_filter_ui)
-            update_filter_ui(filter_combo.currentText())
-
-            # Dialog buttons
-            btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            btn_box.accepted.connect(filter_dialog.accept)
-            btn_box.rejected.connect(filter_dialog.reject)
-            layout.addRow(btn_box)
-
-            # 3. Get user parameters
-            if filter_dialog.exec_() != QDialog.Accepted:
-                return
-
-            filter_type = filter_combo.currentText()
-            window_size = window_spin.value()
-            snr_estimate = snr_spin.value() if filter_type == "Gamma MAP" else None
-
-            # Validate window size
-            if window_size % 2 == 0:
-                raise ValueError("Window size must be an odd number")
-
-            # 4. Initialize progress dialog
-            progress = QProgressDialog(
-                f"Applying {filter_type} Filter...", 
-                "Cancel", 
-                0, 
-                100, 
-                self
-            )
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setMinimumDuration(0)
-            start_time = datetime.now()
-
-            # 5. Prepare processing
-            raw_data = self.sar_steps['Original']['data']
-            rows, cols = raw_data.shape
-            total_pixels = rows * cols
-            processed = 0
-            block_size = 512  # Process in 512x512 blocks for memory efficiency
-            pad_size = window_size // 2
-            filtered = np.empty_like(raw_data)
-
-            # 6. Processing loop with progress updates
+            result, data, profile = payload
+            if getattr(self, '_snap_progress', None):
+                self._snap_progress.close()
+            warnings = sar_snap.sanity_check_db(data)
+            vv = data[np.isfinite(data) & (data != 0.0)]
+            if vv.size and float(np.mean(vv < -15.0)) > 0.6:
+                warnings.append('More than 60% of the processed area has very low backscatter (< -15 dB), typical of open water '
+                                '(sea, large lake) or radar shadow. The selected study area may be mostly water: check the area in step 2.')
+            crs = profile.get('crs')
+            pix = abs(profile['transform'].a)
+            unit = '°' if (crs is not None and crs.is_geographic) else ' m'
+            stats = self._calculate_stats(data)
+            valid = data[np.isfinite(data)]
+            p = result.params
+            self.sar_steps = {
+                'dB': {
+                    'data': data,
+                    'profile': profile,
+                    'stats': stats,
+                    'vis_params': {'cmap': 'gray',
+                                   'vmin': float(np.nanpercentile(valid, 2)) if valid.size else -25.0,
+                                   'vmax': float(np.nanpercentile(valid, 98)) if valid.size else 0.0},
+                    'metadata': {
+                        'file_name': os.path.basename(result.geotiff),
+                        'acquisition_date': self.sar_product.start,
+                        'polarization': p.polarisation,
+                        'dimensions': f"{data.shape[1]}×{data.shape[0]}",
+                        'resolution': f"{pix:.6g}{unit}",
+                        'data_type': 'float32 (σ₀, dB)',
+                        'crs': crs.to_string() if crs is not None else 'Unknown',
+                        'processing_history': [
+                            f"SNAP {p.orbit_type}", "ThermalNoiseRemoval" if p.remove_thermal_noise else "no thermal noise removal",
+                            "Calibration σ₀", f"Speckle-Filter {p.speckle_filter} {p.speckle_window}x{p.speckle_window}",
+                            f"Terrain-Correction (Range-Doppler, {p.dem_name}, {p.pixel_spacing_m} m)", "LinearToFromdB"],
+                    },
+                }
+            }
+            self.sar_snap_result = result
+            side = ""
             try:
-                for i in range(0, rows, block_size):
-                    for j in range(0, cols, block_size):
-                        if progress.wasCanceled():
-                            raise RuntimeError("Filtering canceled by user")
-                        
-                        # Calculate block boundaries with padding
-                        i_start = max(0, i - pad_size)
-                        i_end = min(rows, i + block_size + pad_size)
-                        j_start = max(0, j - pad_size)
-                        j_end = min(cols, j + block_size + pad_size)
-                        
-                        # Process block
-                        block = raw_data[i_start:i_end, j_start:j_end]
-                        filtered_block = self._apply_speckle_filter(
-                            block, filter_type, window_size, snr_estimate
-                        )
-                        
-                        # Remove padding and store result
-                        i_clean_start = i - i_start
-                        j_clean_start = j - j_start
-                        filtered[i:i+block_size, j:j+block_size] = filtered_block[
-                            i_clean_start:i_clean_start+block_size, 
-                            j_clean_start:j_clean_start+block_size
-                        ]
-                        
-                        # Update progress
-                        processed += block_size * block_size
-                        progress.setValue(int((processed / total_pixels) * 100))
-                        QApplication.processEvents()
+                side = sar_snap.write_provenance(result, self._get_gpt(ask=False) or "", self.sar_product.path)
+            except Exception as exc:  # provenance must never break the workflow
+                logging.warning("Could not write provenance file: %s", exc)
+            self._display_sar_layer('dB')
+            self.layer_list.addItem(QListWidgetItem(f"📈 σ₀ dB ({p.polarisation}, SNAP)"))
+            self._enable_next_step('snap')
+            msg = f"SNAP preprocessing finished: {result.geotiff}"
+            if side:
+                msg += f"\nProvenance: {side}"
+            if warnings:
+                QMessageBox.warning(self, "Check the result", "\n".join(warnings) + "\n\n" + msg)
+            else:
+                self.show_status(msg.replace("\n", "  |  "), 10000)
+        except Exception as exc:
+            self.show_error(f"Could not load the SNAP result: {exc}\n{traceback.format_exc()}")
 
-            except Exception as e:
-                progress.close()
-                raise e
 
-            # 7. Calculate visualization parameters
-            valid_data = filtered[np.isfinite(filtered)]
-            vmin, vmax = (np.percentile(valid_data, [2, 98]) if valid_data.size > 0 else (0, 1))
-
-            # 8. Store results with metadata
-            self.sar_steps['Filtered'] = {
-                'data': filtered,
-                'profile': self.sar_steps['Original']['profile'].copy(),
-                'metadata': self._create_filter_metadata(filter_type, window_size, snr_estimate),
-                'stats': self._calculate_stats(filtered),
-                'vis_params': {
-                    'cmap': 'viridis',
-                    'vmin': vmin,
-                    'vmax': vmax
-                }
-            }
-
-            # 9. Update UI
-            self._display_sar_layer('Filtered')
-            self._enable_next_step('filter')  # Enable convert_db step
-            self.layer_list.addItem(
-                QListWidgetItem(f"🌀 {filter_type} Filtered ({window_size}x{window_size})")
-            )
-            self._show_side_by_side('Original', 'Filtered')
-            
-            # 10. Final status
-            processing_time = datetime.now() - start_time
-            self.statusBar().showMessage(
-                f"Applied {filter_type} filter | "
-                f"Window: {window_size}x{window_size} | "
-                f"Time: {processing_time.total_seconds():.1f}s", 
-                10000
-            )
-
-        except RuntimeError as re:
-            self.show_info(str(re))
-        except ValueError as ve:
-            self.show_error(f"Validation error: {str(ve)}")
-        except Exception as e:
-            error_msg = (
-                f"Filter Application Error:\n{str(e)}\n"
-                f"Filter Type: {filter_type}\n"
-                f"Window Size: {window_size}\n"
-                f"{traceback.format_exc()}"
-            )
-            self.show_error(error_msg)
-        finally:
-            if 'progress' in locals():
-                progress.close()
-
-    def _create_filter_metadata(self, filter_type, window_size, snr_estimate):
-        """Create comprehensive metadata for filtered results"""
-        base_metadata = self.sar_steps['Original']['metadata'].copy()
-        
-        return {
-            **base_metadata,
-            'processing_history': base_metadata.get('processing_history', []) + [
-                f"Applied {filter_type} filter ({window_size}x{window_size})"
-            ],
-            'filter_parameters': {
-                'type': filter_type,
-                'window_size': window_size,
-                'snr_estimate': snr_estimate if filter_type == "Gamma MAP" else None,
-                'applied_at': datetime.now().isoformat(),
-                'performance_metrics': {
-                    'processing_time': str(datetime.now() - self.filter_start_time),
-                    'memory_usage': f"{psutil.Process().memory_info().rss / 1024 ** 2:.1f} MB"
-                }
-            }
-        }
-
-    def _validate_sar_workflow(self):
-        """Ensure SAR workflow is properly initialized"""
-        if not self.current_sar_group:
-            raise ValueError(
-                "No active SAR workflow!\n"
-                "1. Go to SAR Processing menu\n"
-                "2. Select 'Load SAR Data'\n"
-                "3. Choose your SAR image"
-            )
-            
-        if 'Original' not in self.sar_steps:
-            raise ValueError(
-                "SAR data not loaded properly!\n"
-                f"Current workflow: {self.current_sar_group}\n"
-                "Try reloading the SAR data"
-            )
-
-    def _calculate_stats(self, data):
-        """حساب الإحصائيات الأساسية"""
-        valid_data = data[np.isfinite(data)]
-        return {
-            'min': np.min(valid_data),
-            'max': np.max(valid_data),
-            'mean': np.mean(valid_data),
-            'std': np.std(valid_data),
-            'percentile_2': np.percentile(valid_data, 2),
-            'percentile_98': np.percentile(valid_data, 98)
-        }
+    
 
 
     def _display_sar_layer(self, layer_name):
@@ -12716,11 +10509,14 @@ class SatelliteImageApp(QMainWindow):
             masked_data = np.ma.masked_invalid(data)
             
             # Configure colormap
-            cmap = copy(plt.cm.get_cmap(cmap))
+            cmap = copy(_get_cmap(cmap))
             cmap.set_bad('magenta', 1.0)  # Highlight invalid values
             
             # Display image
-            img = self.ax.imshow(masked_data, cmap=cmap, vmin=vmin, vmax=vmax)
+            prof = layer_data.get('profile') or {}
+            spec = georef.axis_spec(prof.get('transform'), prof.get('crs'), data.shape[0], data.shape[1])
+            img = self.ax.imshow(masked_data, cmap=cmap, vmin=vmin, vmax=vmax, extent=spec.extent)
+            self._decorate_map_axes(spec)
             plt.colorbar(img, ax=self.ax, label='Intensity Value')
             self.ax.set_title(f"{layer_name} Layer")
             self.canvas.draw()
@@ -12749,10 +10545,6 @@ class SatelliteImageApp(QMainWindow):
                 f"🌐 CRS: {metadata.get('crs', 'Unknown')}"
             ]
 
-            # Add CRE for original data
-            if layer_name == 'Original':
-                cre = self._calculate_cre(data)
-                info_lines.append(f"📊 CRE: {format_value(cre)}")
 
             # Add processing parameters if available
             if 'parameters' in layer_data:
@@ -12786,14 +10578,6 @@ class SatelliteImageApp(QMainWindow):
         except Exception as e:
             self.show_error(f"Unexpected display error: {str(e)}\n{traceback.format_exc()}")
     
-    def _calculate_cre(self, data):
-        """Calculate Equivalent Number of Looks (CRE)"""
-        valid_data = data[np.isfinite(data)]
-        if valid_data.size == 0:
-            return np.nan
-        mean = np.mean(valid_data)
-        std = np.std(valid_data)
-        return (mean ** 2) / (std ** 2) if std != 0 else np.nan
 
     
     
@@ -12801,569 +10585,29 @@ class SatelliteImageApp(QMainWindow):
     
     
     
-    def _handle_histogram_accept(self, dialog):
-        """Save thresholds and proceed to classification"""
-        try:
-            # Validate thresholds exist
-            if 'user_selected' not in self.sar_steps['dB']['metadata']['thresholds']:
-                raise ValueError("No thresholds selected!")
-                
-            dialog.accept()
-            self._launch_classification_workflow()
-            
-        except Exception as e:
-            self.show_error(f"Cannot proceed: {str(e)}")
 
-
-
-    def _update_histogram(self):
-        """Refresh histogram with current parameters"""
-        self.ax.clear()
-        
-        # Calculate parameters
-        bins = self.bin_spin.value()
-        p_min = self.range_min.value()
-        p_max = self.range_max.value()
-        
-        # Calculate dynamic range
-        vmin = np.percentile(self.current_hist_data, p_min)
-        vmax = np.percentile(self.current_hist_data, p_max)
-        
-        # Create histogram
-        n, bins, patches = self.ax.hist(
-            self.current_hist_data,
-            bins=bins,
-            range=(vmin, vmax),
-            color='steelblue',
-            edgecolor='black',
-            density=True
-        )
-        
-        # Professional styling
-        self.ax.set_title("SAR Intensity Distribution Analysis", fontsize=12)
-        self.ax.set_xlabel("Backscatter Coefficient (dB)", fontsize=10)
-        self.ax.set_ylabel("Normalized Frequency", fontsize=10)
-        self.ax.grid(True, linestyle='--', alpha=0.7)
-        
-        # Add distribution curve
-        kde = gaussian_kde(self.current_hist_data)
-        x = np.linspace(vmin, vmax, 300)
-        self.ax.plot(x, kde(x), color='darkorange', linewidth=2)
-        
-        self.canvas.draw()
-
-    def _save_histogram_data(self):
-        """Export histogram data to CSV"""
-        try:
-            path, _ = QFileDialog.getSaveFileName(
-                self.hist_dialog,
-                "Save Histogram Data",
-                "",
-                "CSV Files (*.csv);;All Files (*)"
-            )
-            
-            if path:
-                bins = self.bin_spin.value()
-                counts, bin_edges = np.histogram(self.current_hist_data, bins=bins)
-                
-                pd.DataFrame({
-                    'Bin_Start': bin_edges[:-1],
-                    'Bin_End': bin_edges[1:],
-                    'Count': counts,
-                    'Density': counts / counts.sum()
-                }).to_csv(path, index=False)
-                
-                self.show_info(f"Histogram data saved to:\n{path}")
-                
-        except Exception as e:
-            self.show_error(f"Export failed: {str(e)}")
-
-    def _run_auto_analysis(self):
-        """Improved auto-analysis with smooth integration"""
-        try:
-            db_data = self.sar_steps['dB']['data']
-            
-            # Multi-method threshold detection
-            methods = {
-                'otsu': filters.threshold_otsu,
-                'percentile': lambda x: np.percentile(x, [5, 95]),
-                'kmeans': self._kmeans_threshold
-            }
-            
-            thresholds = []
-            for name, method in methods.items():
-                try:
-                    result = method(db_data[np.isfinite(db_data)])
-                    if isinstance(result, (list, tuple, np.ndarray)):
-                        thresholds.extend(result)
-                    else:
-                        thresholds.append(result)
-                except:
-                    continue
-
-            # Calculate final values
-            lower = np.nanpercentile(thresholds, 25)
-            upper = np.nanpercentile(thresholds, 75)
-
-            # Update UI
-            self.lower_spin.setValue(lower)
-            self.upper_spin.setValue(upper)
-
-        except Exception as e:
-            self._show_error(f"Auto-Analysis Failed: {str(e)}")
-
-
-    def _adaptive_threshold(self, data):
-        """Returns tuple of (lower, upper) thresholds"""
-        mean = np.mean(data)
-        std = np.std(data)
-        return (mean - 1.5*std, mean + 0.5*std)
-    
-    def _sanitize_input(self, data):
-        """Ensure 1D array of finite values"""
-        clean_data = data[np.isfinite(data)]
-        if len(clean_data) < 10:
-            raise ValueError("Insufficient valid data points")
-        return clean_data.ravel()  # Flatten to 1D
-
-
-    def _show_statistical_summary(self):
-        """Display professional statistical summary with robust error handling"""
-        from scipy import stats
-        import numpy as np
-        
-        try:
-            if not hasattr(self, 'current_hist_data') or len(self.current_hist_data) < 2:
-                raise ValueError("Insufficient data for statistical analysis")
-
-            data = self.current_hist_data
-            
-            # Basic statistics
-            stats_dict = {
-                'Samples': len(data),
-                'Mean': np.mean(data),
-                'Std Dev': np.std(data),
-                'Skewness': stats.skew(data),
-                'Kurtosis': stats.kurtosis(data)
-            }
-
-            # Advanced statistics with validation
-            if len(data) >= 4:  # Minimum samples for JB test
-                jb_stat, jb_p = stats.jarque_bera(data)
-                stats_dict.update({
-                    'Jarque-Bera Stat': jb_stat,
-                    'Jarque-Bera p-value': jb_p
-                })
-            
-            # Confidence intervals
-            if len(data) >= 30:
-                ci_low, ci_high = stats.norm.interval(0.95, 
-                                                    loc=np.mean(data),
-                                                    scale=stats.sem(data))
-                stats_dict['95% CI'] = (ci_low, ci_high)
-
-            # Format results
-            msg = ["Statistical Summary:", ""]
-            for k, v in stats_dict.items():
-                if isinstance(v, tuple):
-                    msg.append(f"{k}: ({v[0]:.2f}, {v[1]:.2f})")
-                else:
-                    msg.append(f"{k}: {v:.2f}" if isinstance(v, float) else f"{k}: {v}")
-
-            QMessageBox.information(self.hist_dialog, 
-                                "Statistical Analysis", 
-                                "\n".join(msg))
-            
-        except Exception as e:
-            self.show_error(f"Statistical analysis failed: {str(e)}")
 
     
 
-    def _show_threshold_window(self):
-        try:
-            threshold_dialog = QDialog(self)
-            layout = QVBoxLayout(threshold_dialog)
-            
-            # Smart Control Panel
-            control_layout = QHBoxLayout()
-            
-            # Professional Button Set
-            btn_box = QDialogButtonBox()
-            btn_auto = btn_box.addButton("Auto-Threshold", QDialogButtonBox.ActionRole)
-            btn_apply = btn_box.addButton("Apply", QDialogButtonBox.AcceptRole)
-            btn_cancel = btn_box.addButton("Cancel", QDialogButtonBox.RejectRole)
-            btn_help = btn_box.addButton("?", QDialogButtonBox.HelpRole)
 
-            # Auto-Threshold Implementation
-            btn_auto.clicked.connect(self._apply_auto_threshold)
-            btn_help.clicked.connect(self._show_threshold_help)
-            
-            # ... threshold selection UI code ...
-
-            layout.addLayout(control_layout)
-            threshold_dialog.exec_()
-
-        except Exception as e:
-            self.show_error(f"Threshold error: {str(e)}")
-
-    def _get_optimal_thresholds(self, data):
-        """Returns multiple threshold suggestions using professional methods"""
-        valid_data = data[np.isfinite(data)]
-        
-        # Method 1: Otsu's Optimal Thresholding
-        try:
-            otsu_thresh = filters.threshold_otsu(valid_data)
-        except:
-            otsu_thresh = None
-            
-        # Method 2: Statistical Percentiles
-        low_pct, high_pct = np.percentile(valid_data, [5, 95])
-        
-        # Method 3: Multi-modal Analysis
-        kde = gaussian_kde(valid_data)
-        x = np.linspace(valid_data.min(), valid_data.max(), 100)
-        y = kde(x)
-        peaks, _ = find_peaks(y)
-        modal_thresh = x[peaks].mean() if len(peaks) > 0 else None
-        
-        # Method 4: Machine Learning Suggestions (requires training data)
-        ml_thresh = self._ml_based_threshold(valid_data)
-        
-        return {
-            'otsu': otsu_thresh,
-            'percentiles': (low_pct, high_pct),
-            'modes': modal_thresh,
-            'ml_suggestion': ml_thresh
-        }
     
-    def _show_threshold_help(self):
-        """Professional guidance for threshold selection"""
-        help_text = """SAR Water Classification Best Practices:
 
-    1. Optimal Threshold Strategies:
-    - Otsu's Method: Best for bimodal distributions
-    - Percentile Ranges: 5th-95th for conservative estimate
-    - Multi-modal Analysis: For complex distributions
-    - ML Suggestions: Uses historical classification patterns
 
-    2. Validation Techniques:
-    - Compare with known water bodies
-    - Check seasonal variations
-    - Verify with NDWI when available
-
-    3. Professional Tips:
-    - Use logarithmic scaling for better separation
-    - Consider speckle-filtered data
-    - Validate with ground truth data
-    - Test multiple methods and compare results"""
-
-        QMessageBox.information(self, "Expert Threshold Guide", help_text)
+    
 
   
-    def _add_statistical_annotations(self):
-        """Add professional statistical annotations to histogram plot"""
-        try:
-            from scipy import stats  # Explicit import for clarity
-            
-            # Check data availability
-            if not hasattr(self, 'current_hist_data') or len(self.current_hist_data) < 2:
-                raise ValueError("Insufficient data for statistical analysis")
-            
-            data = self.current_hist_data
-            summary_stats = {
-                'Samples': len(data),
-                'Mean': np.mean(data),
-                'Std Dev': np.std(data),
-                'Skewness': stats.skew(data),
-                'Kurtosis': stats.kurtosis(data),
-                'Min': np.min(data),
-                'Max': np.max(data)
-            }
-            
-            # Create formatted text
-            stats_text = (
-                "Statistical Summary:\n"
-                f"Samples: {summary_stats['Samples']}\n"
-                f"Mean: {summary_stats['Mean']:.2f} dB\n"
-                f"Std Dev: {summary_stats['Std Dev']:.2f} dB\n"
-                f"Skewness: {summary_stats['Skewness']:.2f}\n"
-                f"Kurtosis: {summary_stats['Kurtosis']:.2f}\n"
-                f"Range: {summary_stats['Min']:.2f} - {summary_stats['Max']:.2f} dB"
-            )
-            
-            # Add annotation box
-            self.ax.text(
-                0.98, 0.70,  # Adjusted position for better visibility
-                stats_text,
-                transform=self.ax.transAxes,
-                verticalalignment='top',
-                horizontalalignment='right',
-                bbox=dict(
-                    boxstyle='round',
-                    facecolor='white',
-                    alpha=0.9,
-                    edgecolor='#404040',
-                    linewidth=0.8
-                )
-            )
-            
-        except ValueError as ve:
-            self.show_error(f"Statistical annotations skipped: {str(ve)}")
-        except ImportError:
-            self.show_error("SciPy package required for statistical analysis")
-        except Exception as e:
-            self.show_error(f"Annotation error: {str(e)}\n{traceback.format_exc()}")
     
-    def _add_kde_curve(self):
-        """Add Kernel Density Estimation curve to histogram"""
-        from scipy.stats import gaussian_kde
-        import numpy as np
-        
-        try:
-            # Calculate KDE
-            data = self.current_hist_data
-            if len(data) < 2:
-                raise ValueError("Insufficient data for KDE calculation")
-                
-            kde = gaussian_kde(data)
-            x = np.linspace(self.range_min.value(), self.range_max.value(), 300)
-            y = kde(x)
-            
-            # Plot KDE curve
-            self.ax.plot(x, y, color='#FF5733', linewidth=2, label='Density Curve')
-            self.ax.legend()
-            
-        except ValueError as ve:
-            self.show_error(f"KDE Error: {str(ve)}")
-        except Exception as e:
-            self.show_error(f"Density estimation failed: {str(e)}")
 
-    def _add_threshold_lines(self):
-        """Initialize or update threshold lines safely"""
-        # Remove existing lines if they exist
-        if hasattr(self, 'lower_threshold_line'):
-            self.lower_threshold_line.remove()
-        if hasattr(self, 'upper_threshold_line'):
-            self.upper_threshold_line.remove()
-        
-        # Get current axes
-        ax = self.fig.gca()
-        
-        # Create new threshold lines
-        lower = self.lower_spin.value()
-        upper = self.upper_spin.value()
-        
-        # Store line references as instance attributes
-        self.lower_threshold_line = ax.axvline(lower, color='red', linestyle='--', label=f'Lower: {lower:.2f} dB')
-        self.upper_threshold_line = ax.axvline(upper, color='green', linestyle='--', label=f'Upper: {upper:.2f} dB')
-        
-        # Add shaded region
-        self.threshold_region = ax.axvspan(lower, upper, color='blue', alpha=0.1)
-        
-        self.canvas.draw()
-
-
-
-    def _handle_proceed(self, dialog):
-        """Save thresholds and proceed to classification"""
-        try:
-            # Validate thresholds
-            if not self._validate_current_thresholds():
-                raise ValueError("Invalid threshold values")
-                
-            # Store thresholds
-            self._save_current_thresholds()
-            
-            # Close dialog and proceed
-            dialog.accept()
-            self._launch_classification_workflow()
-            
-        except Exception as e:
-            self.show_error(f"Cannot proceed: {str(e)}")
-
-    def _save_current_thresholds(self):
-        """Save current threshold values to metadata"""
-        self.sar_steps['dB']['metadata']['thresholds']['manual'] = {
-            'lower': self.range_min.value(),
-            'upper': self.range_max.value(),
-            'timestamp': datetime.now().isoformat()
-        }
-
-    def _validate_current_thresholds(self):
-        """Ensure valid threshold values"""
-        lower = self.range_min.value()
-        upper = self.range_max.value()
-        return lower < upper and -50 <= lower <= 50 and -50 <= upper <= 50
-
-    def _launch_classification_workflow(self):
-        """Initialize water classification after threshold selection"""
-        try:
-            if 'thresholds' not in self.sar_steps['dB']['metadata']:
-                raise ValueError("Thresholds not configured")
-                
-            self.classify_water()
-            self._enable_sar_workflow_step(4)  # Enable next steps
-            
-        except Exception as e:
-            self.show_error(f"Workflow transition failed: {str(e)}")
-    
-    def _reset_to_defaults(self):
-        """Reset histogram parameters to default values"""
-        try:
-            # Reset UI controls
-            self.bin_spin.setValue(200)
-            self.range_min.setValue(-20)
-            self.range_max.setValue(5)
-            
-            # Reset metadata thresholds
-            if 'thresholds' in self.sar_steps['dB']['metadata']:
-                self.sar_steps['dB']['metadata']['thresholds']['manual'] = None
-                
-            # Refresh display
-            self._refresh_histogram()
-            
-            self.statusBar().showMessage("Reset to default parameters", 3000)
-            
-        except AttributeError as ae:
-            self.show_error(f"Reset failed: UI elements not initialized - {str(ae)}")
-        except Exception as e:
-            self.show_error(f"Reset error: {str(e)}")
 
     
-    def _update_threshold_preview(self):
-        """Real-time classification preview"""
-        lower = self.lower_spin.value()
-        upper = self.upper_spin.value()
-        
-        # Create preview mask
-        mask = np.logical_and(self.data >= lower, self.data <= upper)
-        
-        # Apply to RGB preview (pseudo-color)
-        preview_img = np.zeros((*mask.shape, 3))
-        preview_img[mask] = [0, 0.5, 1]  # Water in blue
-        preview_img[~mask] = [0.8, 0.8, 0.8]  # Non-water in gray
-        
-        self.preview_ax.imshow(preview_img)
-        self.canvas.draw()
+
+    
 
     
     
 
-    def _enable_workflow_step(self, completed_step):
-        """Enable next step in workflow"""
-        workflow_steps = [
-            'load', 
-            'filter', 
-            'convert_db', 
-            'analyze', 
-            'classify'
-        ]
-        
-        try:
-            current_index = workflow_steps.index(completed_step)
-            next_index = current_index + 1
-            
-            if next_index < len(workflow_steps):
-                # Enable next menu item
-                self.workflow_actions[next_index].setEnabled(True)
-                self.statusBar().showMessage(
-                    f"Step {next_index+1} now available", 
-                    3000
-                )
-        except ValueError:
-            self.show_error("Invalid workflow step progression")
 
-
-    def get_acquisition_date(self, file_path):
-        """
-        Extract acquisition date from SAR image metadata
-        Supports common SAR formats: Sentinel-1, RADARSAT, TerraSAR-X, COSMO-SkyMed
-        """
-        try:
-            with rasterio.open(file_path) as src:
-                # Try different known SAR metadata tags
-                tags = src.tags()
-                
-                # Common acquisition date tags by platform
-                date_tags = [
-                    'ACQUISITION_START_TIME',  # Sentinel-1
-                    'ACQUISITIONDATE',         # TerraSAR-X
-                    'ACQUISITION_DATE',        # RADARSAT-2
-                    'FIRST_LINE_ACQUISITION_TIME',  # COSMO-SkyMed
-                    'DATE_ACQUIRED',           # Generic
-                    'DATE'                     # Fallback
-                ]
-
-                # Search through possible tags
-                for tag in date_tags:
-                    if tag in tags:
-                        date_str = tags[tag]
-                        # Standardize date format
-                        try:
-                            # Handle different datetime formats
-                            if 'T' in date_str:  # ISO format with time
-                                dt = datetime.fromisoformat(date_str.split('.')[0])
-                            else:  # Date-only format
-                                dt = datetime.strptime(date_str, '%Y%m%d')
-                                
-                            return dt.strftime('%Y-%m-%d')
-                        except ValueError:
-                            continue
-
-                # Fallback to filename parsing (common in SAR naming conventions)
-                filename = os.path.basename(file_path)
-                
-                # Try common SAR filename patterns
-                patterns = [
-                    r'\d{8}T\d{6}',  # Sentinel-1 (20230615T042312)
-                    r'\d{4}-\d{2}-\d{2}',  # Hyphenated date
-                    r'\d{14}',  # TerraSAR-X (YYYYMMDDHHMMSS)
-                    r'\d{8}_\d{6}'  # COSMO-SkyMed
-                ]
-
-                for pattern in patterns:
-                    match = re.search(pattern, filename)
-                    if match:
-                        date_str = match.group()
-                        try:
-                            if len(date_str) == 8:  # YYYYMMDD
-                                dt = datetime.strptime(date_str, '%Y%m%d')
-                            elif len(date_str) == 14:  # YYYYMMDDHHMMSS
-                                dt = datetime.strptime(date_str, '%Y%m%d%H%M%S')
-                            elif 'T' in date_str:  # Sentinel-1 style
-                                dt = datetime.fromisoformat(date_str.replace('T',''))
-                            return dt.strftime('%Y-%m-%d')
-                        except ValueError:
-                            continue
-
-                return "Unknown (No valid date found in metadata or filename)"
-
-        except Exception as e:
-            self.show_error(f"Date extraction failed: {str(e)}")
-            return "Unknown"
     
-    def _update_sar_metadata(self, step_name):
-        """Update info box with SAR metadata and statistics"""
-        
-        metadata = self.sar_steps[step_name].get('metadata', {})
-        stats = self.sar_steps[step_name]['stats']
-        
-        info_text = f"🔍 SAR Metadata ({step_name}):\n"
-        info_text += f"• Acquisition Date: {metadata.get('acquisition_date', 'N/A')}\n"
-        info_text += f"• Polarization: {metadata.get('polarization', 'N/A')}\n"
-        info_text += f"• Resolution: {metadata.get('resolution', 'N/A')}\n\n"
-        info_text += "📊 Statistics:\n"
-        info_text += f"• Min: {stats['min']:.2f}\n"
-        info_text += f"• Max: {stats['max']:.2f}\n"
-        info_text += f"• Mean: {stats['mean']:.2f}\n"
-        info_text += f"• Std Dev: {stats['std']:.2f}\n"
-        
-        if 'percentiles' in stats:
-            info_text += "\n📈 Percentiles:\n"
-            for k, v in stats['percentiles'].items():
-                info_text += f"• {k}: {v:.2f}\n"
-        
-        self.info_box.setText(info_text)   
 
     def _calculate_stats(self, data):
         """Robust statistics calculation"""
@@ -13373,464 +10617,31 @@ class SatelliteImageApp(QMainWindow):
                 'min': np.nan,
                 'max': np.nan,
                 'mean': np.nan,
-                'std': np.nan
+                'std': np.nan,
+                'percentile_2': np.nan,
+                'percentile_98': np.nan
             }
         
         return {
             'min': np.min(valid_data),
             'max': np.max(valid_data),
             'mean': np.mean(valid_data),
-            'std': np.std(valid_data)
+            'std': np.std(valid_data),
+            'percentile_2': np.percentile(valid_data, 2),
+            'percentile_98': np.percentile(valid_data, 98)
         }
     
-    def retry_filtering(self, dialog):
-        """Retry filtering with same parameters"""
-        dialog.close()
-        self.apply_filter()    
-        
-    def _show_side_by_side(self, step1, step2):
-        """Show comparison window with enhanced visualization"""
-        try:
-            # Create comparison dialog
-            compare_dialog = QDialog(self)
-            compare_dialog.setWindowTitle("Processing Comparison")
-            compare_dialog.setMinimumSize(1200, 800)
+
+
             
-            # Main layout
-            main_layout = QVBoxLayout(compare_dialog)
-            
-            # Create matplotlib figure with subplots
-            fig = Figure(figsize=(14, 8))
-            canvas = FigureCanvas(fig)
-            toolbar = NavigationToolbar(canvas, compare_dialog)
-            ax1 = fig.add_subplot(121)
-            ax2 = fig.add_subplot(122)
-            
-            # Configure images with adjusted colorbars
-            for ax, step in zip([ax1, ax2], [step1, step2]):
-                data = self.sar_steps[step]['data']
-                cmap = self.sar_steps[step]['vis_params']['cmap']
-                vmin = self.sar_steps[step]['vis_params']['vmin']
-                vmax = self.sar_steps[step]['vis_params']['vmax']
-                
-                im = ax.imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
-                cbar = fig.colorbar(im, ax=ax, orientation='vertical', 
-                                shrink=0.6, aspect=10)  # Adjusted parameters
-                ax.set_title(step)
-                cbar.ax.tick_params(labelsize=8)
-            
-            # Create control buttons
-            btn_box = QDialogButtonBox()
-            btn_accept = btn_box.addButton("Accept", QDialogButtonBox.AcceptRole)
-            btn_retry = btn_box.addButton("Retry", QDialogButtonBox.ActionRole)
-            btn_cancel = btn_box.addButton("Cancel", QDialogButtonBox.RejectRole)
-            
-            # Connect signals
-            btn_accept.clicked.connect(compare_dialog.accept)
-            btn_retry.clicked.connect(lambda: self.retry_filtering(compare_dialog))
-            btn_cancel.clicked.connect(compare_dialog.reject)
-            
-            # Add widgets to layout
-            main_layout.addWidget(toolbar)
-            main_layout.addWidget(canvas)
-            main_layout.addWidget(btn_box)
-            
-            # Show dialog
-            compare_dialog.exec_()
-            
-        except Exception as e:
-            self.show_error(f"Comparison failed: {str(e)}")   
-
-
-
-    def show_status(self, message, timeout=3000):
-        """Status display method"""
-        self.statusBar().showMessage(message, timeout)
-        try:
-            # Check precondition
-            if 'Filtered' not in self.sar_steps:
-                raise ValueError("Please apply speckle filter first")
-
-            # Get linear scale data
-            linear_data = self.sar_steps['Filtered']['data']
-            
-            # Convert to dB with NaN handling for non-positive values
-            with np.errstate(divide='ignore', invalid='ignore'):
-                db_data = 10 * np.log10(np.where(linear_data > 0, linear_data, np.nan))
-
-            # Store results
-            self.sar_steps['dB'] = {
-                'data': db_data,
-                'metadata': self.sar_steps['Filtered']['metadata'].copy(),
-                'profile': self.sar_steps['Filtered']['profile'],
-                'stats': self._calculate_stats(db_data),
-                'vis_params': {
-                    'cmap': 'gray',
-                    'vmin': np.nanpercentile(db_data, 2),
-                    'vmax': np.nanpercentile(db_data, 98)
-                }
-            }
-
-            # Update UI
-            self._display_sar_layer('dB')
-            self._enable_sar_workflow_step(3)
-            self._update_sar_metadata('dB')
-            self._show_histogram(db_data)  # Now using the new method
-            
-            # After successful conversion
-            self._prompt_save_result('dB')
-        except Exception as e:
-            self.show_error(f"dB conversion failed: {str(e)}")
-
-    def _run_with_progress(self, title, operation, total_steps):
-        """Generic progress-enabled operation runner"""
-        progress = QProgressDialog(
-            title,
-            "Cancel", 
-            0, 
-            total_steps, 
-            self
-        )
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)
-        
-        result = None
-        try:
-            for step in range(total_steps):
-                if progress.wasCanceled():
-                    raise RuntimeError("Operation canceled")
-                    
-                # Execute operation step
-                result = operation(step, result)
-                
-                progress.setValue(step + 1)
-                QApplication.processEvents()
-                
-            return result
-        finally:
-            progress.close()
-
-    def _prompt_save_result(self, step_name, data=None):
-        """Universal save prompt for processing results"""
-        reply = QMessageBox.question(
-            self,
-            "Save Result",
-            f"Would you like to save the {step_name} result?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes
-        )
-        
-        if reply == QMessageBox.Yes:
-            self._save_processed_data(step_name, data)
-
-    def _save_processed_data(self, step_name, data=None):
-        """Save processed data with metadata"""
-        try:
-            # Validate data existence
-            if data is None and step_name not in self.sar_steps:
-                raise ValueError("No data available for saving")
-
-            # Get data and metadata with proper validation
-            if data is None:
-                data = self.sar_steps[step_name]['data']
-                metadata = self.sar_steps[step_name].get('metadata', {})
-                profile = self.sar_steps[step_name].get('profile', {})
-            else:
-                # For histogram data, use original metadata
-                metadata = self.sar_steps.get('dB', self.sar_steps.get('Original', {})).get('metadata', {})
-                profile = self.sar_steps['Original'].get('profile', {}).copy()
-
-            # Configure output parameters
-            profile.update({
-                'driver': 'GTiff',
-                'dtype': data.dtype,
-                'count': 1,
-                'compress': 'lzw'
-            })
-
-            # Get save path
-            default_name = f"{metadata.get('file_name', 'output')}_{step_name}.tif"
-            path, _ = QFileDialog.getSaveFileName(
-                self,
-                "Save Processed Data",
-                default_name,
-                "GeoTIFF Files (*.tif *.tiff);;All Files (*)"
-            )
-            
-            if not path:
-                return
-
-            # Write file
-            with rasterio.open(path, 'w', **profile) as dst:
-                dst.write(data, 1)
-                dst.update_tags(**metadata)
-                
-            self.show_info(f"Successfully saved {step_name} data to:\n{path}")
-
-        except Exception as e:
-            self.show_error(f"Save failed: {str(e)}")
-            
-
-    def analyze_histogram(self):
-        """SAR Backscatter Analysis window with optimized layout and controls"""
-        try:
-            if 'dB' not in self.sar_steps:
-                raise ValueError("Complete dB conversion first (step 3)")
-
-            analysis_dialog = QDialog(self)
-            analysis_dialog.setWindowTitle("SAR Backscatter Analysis")
-            analysis_dialog.setMinimumSize(1400, 900)
-            main_layout = QVBoxLayout(analysis_dialog)
-            main_layout.setContentsMargins(10, 10, 10, 10)
-
-            # Control Panel (Top 20%)
-            control_panel = QWidget()
-            control_layout = QHBoxLayout(control_panel)
-            control_layout.setContentsMargins(0, 0, 0, 0)
-
-            # Analysis Parameters
-            param_group = QGroupBox("Analysis Parameters")
-            param_layout = QFormLayout(param_group)
-            
-            self.bin_spin = QSpinBox()
-            self.bin_spin.setRange(10, 1000)
-            self.bin_spin.setValue(200)
-            
-            self.method_combo = QComboBox()
-            self.method_combo.addItems(["Manual", "Otsu's Method", "Percentile Ranges",
-                                    "K-means Clustering", "Adaptive Thresholding"])
-            
-            param_layout.addRow("Number of Bins:", self.bin_spin)
-            param_layout.addRow("Threshold Method:", self.method_combo)
-
-            # Threshold Controls
-            threshold_group = QGroupBox("Threshold Values (dB)")
-            threshold_layout = QFormLayout(threshold_group)
-            self.lower_spin = QDoubleSpinBox()
-            self.lower_spin.setRange(-50, 50)
-            self.upper_spin = QDoubleSpinBox()
-            self.upper_spin.setRange(-50, 50)
-            threshold_layout.addRow("Lower:", self.lower_spin)
-            threshold_layout.addRow("Upper:", self.upper_spin)
-
-            control_layout.addWidget(param_group)
-            control_layout.addWidget(threshold_group)
-            control_layout.addStretch()
-
-            # Main Visualization Area (80%)
-            viz_layout = QHBoxLayout()
-            
-            # Histogram Canvas (70% width)
-            hist_container = QWidget()
-            hist_layout = QVBoxLayout(hist_container)
-            self.fig = Figure(figsize=(14, 8))
-            self.canvas = FigureCanvas(self.fig)
-            toolbar = NavigationToolbar(self.canvas, analysis_dialog)
-            hist_layout.addWidget(self.canvas)
-            hist_layout.addWidget(toolbar)
-            viz_layout.addWidget(hist_container, stretch=7)
-
-            # Statistics & Controls Panel (30% width)
-            stats_group = QGroupBox("Statistics & Actions")
-            stats_layout = QVBoxLayout(stats_group)
-            
-            # Statistics Display
-            self.stats_box = QTextEdit()
-            self.stats_box.setReadOnly(True)
-            self.stats_box.setStyleSheet("""
-                font-family: Consolas, monospace;
-                font-size: 10pt;
-                background-color: #f8f9fa;
-                padding: 10px;
-            """)
-            
-            # Action Buttons
-            btn_box = QDialogButtonBox()
-            self.preview_btn = btn_box.addButton("Preview Water", QDialogButtonBox.ActionRole)
-            update_btn = btn_box.addButton("Update Histogram", QDialogButtonBox.ActionRole)
-            complete_btn = btn_box.addButton("Complete Step", QDialogButtonBox.AcceptRole)
-            cancel_btn = btn_box.addButton("Cancel", QDialogButtonBox.RejectRole)
-
-            stats_layout.addWidget(self.stats_box)
-            stats_layout.addWidget(btn_box)
-
-            viz_layout.addWidget(stats_group, stretch=3)
-
-            # Layout Assembly
-            main_layout.addWidget(control_panel)
-            main_layout.addLayout(viz_layout)
-
-            # Signal Connections
-            self.preview_btn.clicked.connect(self._show_water_preview)
-            update_btn.clicked.connect(self._update_display)
-            complete_btn.clicked.connect(lambda: self._complete_analysis(analysis_dialog))
-            cancel_btn.clicked.connect(analysis_dialog.reject)
-            self.bin_spin.valueChanged.connect(self._update_display)
-            self.method_combo.currentTextChanged.connect(self._run_pro_analysis)
-
-            # Initialize Data
-            self.current_hist_data = self.sar_steps['dB']['data'][np.isfinite(self.sar_steps['dB']['data'])]
-            self._run_pro_analysis()
-            self._update_display()
-            
-            return analysis_dialog.exec_()
-
-        except Exception as e:
-            self.show_error(f"Histogram analysis failed: {str(e)}")
 
     
-
-    def _get_statistical_summary(self):
-        """Enhanced statistical summary with threshold info"""
-        data = self.current_hist_data
-        lower = self.lower_spin.value()
-        upper = self.upper_spin.value()
-        
-        stats = [
-            f"{'Total Samples:':<20} {len(data):,}",
-            f"{'Data Range:':<20} {np.min(data):.2f} - {np.max(data):.2f} dB",
-            f"{'Current Thresholds:':<20} {lower:.2f} - {upper:.2f} dB",
-            f"{'Threshold Range:':<20} {upper-lower:.2f} dB",
-            f"{'Mean Value:':<20} {np.mean(data):.2f} dB",
-            f"{'Std Deviation:':<20} {np.std(data):.2f} dB",
-            f"{'Threshold Coverage:':<20} {np.mean((data >= lower) & (data <= upper)):.1%}"
-        ]
-        
-        return "\n".join(stats)
-    
-    def _save_histogram(self):
-        """Save histogram to file with professional format options"""
-        formats = "PNG (*.png);;PDF (*.pdf);;SVG (*.svg);;TIFF (*.tif)"
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save Histogram", "", formats
-        )
-        
-        if path:
-            try:
-                self.fig.savefig(
-                    path,
-                    dpi=300,
-                    bbox_inches='tight',
-                    facecolor='white'
-                )
-                self.show_status(f"Histogram saved to {path}")
-            except Exception as e:
-                self.show_error(f"Save failed: {str(e)}")
 
     # Add to menu bar initialization
-    def _create_menus(self):
-        menu_bar = self.menuBar()
-        file_menu = menu_bar.addMenu("File")
-        
-        save_hist_action = QAction("Save Histogram", self)
-        save_hist_action.triggered.connect(self._save_histogram)
-        file_menu.addAction(save_hist_action)
 
     
-    def _run_pro_analysis(self):
-        """Enhanced threshold analysis with manual option"""
-        try:
-            method = self.method_combo.currentText()
-            data = self.current_hist_data
-            
-            if method == "Manual":
-                # Leave current values unchanged
-                return  # Exit early for manual mode
-                
-            elif method == "Otsu's Method":
-                threshold = filters.threshold_otsu(data)
-                lower, upper = threshold, threshold
-                
-            elif method == "Percentile Ranges":
-                lower, upper = np.percentile(data, [5, 95])
-                
-            elif method == "K-means Clustering":
-                kmeans = KMeans(n_clusters=2).fit(data.reshape(-1, 1))
-                centers = sorted(kmeans.cluster_centers_.flatten())
-                lower, upper = centers[0], centers[1]
-                
-            elif method == "Adaptive Thresholding":
-                mean = np.mean(data)
-                std = np.std(data)
-                lower, upper = mean-2*std, mean+2*std
-
-            # Update UI controls for non-manual methods
-            self.lower_spin.setValue(lower)
-            self.upper_spin.setValue(upper)
-
-            self._update_display()
-
-        except Exception as e:
-            self.show_error(f"Analysis failed: {str(e)}")
-
-    def _update_display(self):
-        """Update histogram display with integrated statistics"""
-        try:
-            self.fig.clear()
-            ax = self.fig.add_subplot(111)
-            
-            # Get current parameters
-            bins = self.bin_spin.value()
-            lower = self.lower_spin.value()
-            upper = self.upper_spin.value()
-
-            # Plot histogram with proper normalization
-            n, bins, patches = ax.hist(
-                self.current_hist_data,
-                bins=bins,
-                range=(lower, upper),
-                density=True,
-                color='steelblue',
-                edgecolor='black',
-                alpha=0.8
-            )
-
-            # Add threshold lines and region
-            ax.axvline(lower, color='red', linestyle='--', linewidth=1.5, label=f'Lower: {lower:.2f} dB')
-            ax.axvline(upper, color='green', linestyle='--', linewidth=1.5, label=f'Upper: {upper:.2f} dB')
-            ax.axvspan(lower, upper, color='blue', alpha=0.1)
-
-            # Add KDE curve
-            kde = gaussian_kde(self.current_hist_data)
-            x = np.linspace(lower, upper, 500)
-            ax.plot(x, kde(x), color='darkorange', linewidth=2, label='Density Curve')
-
-            # Formatting
-            ax.set_title("SAR Backscatter Distribution Analysis", fontsize=14)
-            ax.set_xlabel("Backscatter Coefficient (dB)", fontsize=12)
-            ax.set_ylabel("Probability Density", fontsize=12)
-            ax.grid(True, linestyle='--', alpha=0.6)
-            ax.legend(loc='upper right')
-
-            # Add colorbar with proper sizing
-            norm = plt.Normalize(vmin=lower, vmax=upper)
-            sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
-            sm.set_array([])
-            
-            # # Create properly sized colorbar
-            # ax_pos = ax.get_position()
-            # cax = self.fig.add_axes([ax_pos.x1 + 0.02, ax_pos.y0, 0.02, ax_pos.height])
-            # # cbar = self.fig.colorbar(sm, cax=cax)
-            # # cbar.set_label('Threshold Range (dB)', fontsize=10)
-            # # cbar.ax.tick_params(labelsize=8)
-
-            # Update statistics
-            stats = self._get_statistical_summary()
-            self.stats_box.setText(stats)
-            self.canvas.draw()
-
-        except Exception as e:
-            self.show_error(f"Display update failed: {str(e)}")
 
 
-
-    def _on_complete_step(self):
-        if self._validate_thresholds():
-            self._save_thresholds()
-            self._enable_next_step()
-            self.close()
-        else:
-            self.show_error("Invalid thresholds. Check values before completing.")
 
     # In analyze_histogram method, update the Complete button connection:
     # Replace:
@@ -13839,873 +10650,29 @@ class SatelliteImageApp(QMainWindow):
 
     # Remove the old _save_thresholds method and replace with:
     
-    def _save_thresholds(self):
-        """Get values directly from spin boxes"""
-        try:
-            self.sar_steps['dB']['metadata']['thresholds'] = {
-                'lower': self.lower_spin.value(),  # Direct from UI
-                'upper': self.upper_spin.value(),  # Direct from UI
-                'method': self.method_combo.currentText(),
-                'timestamp': datetime.now().isoformat()
-            }
-        except Exception as e:
-            self.show_error(f"Threshold save failed: {str(e)}")
    
 
     
     
-    def _calculate_otsu_threshold(self, data):
-        """Professional method: Otsu's thresholding"""
-        from skimage.filters import threshold_otsu
-        return threshold_otsu(data)
-
-    def _calculate_percentile_threshold(self, data):
-        """Professional method: Percentile-based threshold"""
-        return np.percentile(data, [5, 95])  # [lower, upper]
-
-    def _calculate_kmeans_threshold(self, data):
-        """Professional method: K-means clustering threshold"""
-        from sklearn.cluster import KMeans
-        kmeans = KMeans(n_clusters=2).fit(data.reshape(-1, 1))
-        centers = sorted(kmeans.cluster_centers_.flatten())
-        return (centers[0] + centers[1])/2  # Midpoint between clusters
-    
-    def _show_water_preview(self):
-        """Professional water preview visualization"""
-        try:
-            preview_dialog = QDialog(self)
-            preview_dialog.setWindowTitle("Water Classification Preview")
-            preview_dialog.setMinimumSize(800, 600)
-            
-            fig = Figure(figsize=(10, 6))
-            canvas = FigureCanvas(fig)
-            toolbar = NavigationToolbar(canvas, preview_dialog)
-            
-            # Create mask
-            lower = self.lower_spin.value()
-            upper = self.upper_spin.value()
-            data = self.sar_steps['dB']['data']
-            mask = (data >= lower) & (data <= upper)
-            cleaned_mask = self._clean_water_mask(mask)
-
-            # Create RGB preview
-            preview = np.zeros((*cleaned_mask.shape, 3))
-            preview[cleaned_mask] = [0, 0.4, 1]  # Blue for water
-            preview[~cleaned_mask] = [0.9, 0.9, 0.9]  # Light gray for non-water
-
-            ax = fig.add_subplot(111)
-            ax.imshow(preview)
-            ax.set_title(f"Water Preview\nThresholds: {lower:.2f} dB - {upper:.2f} dB")
-            ax.axis('off')
-
-            layout = QVBoxLayout(preview_dialog)
-            layout.addWidget(toolbar)
-            layout.addWidget(canvas)
-            
-            preview_dialog.exec_()
-
-        except Exception as e:
-            self.show_error(f"Preview failed: {str(e)}")
-
-
-    def _complete_analysis(self, dialog):
-        """Validate and complete analysis step"""
-        if self._validate_thresholds():
-            self._save_thresholds()
-            self._enable_next_step('analyze')
-            dialog.accept()
-            self.show_status("Threshold analysis completed. Ready for classification.")
-        else:
-            self.show_error("Invalid thresholds. Values must be between -50 and 50 dB with lower < upper.")
-
-    def _validate_thresholds(self):
-        """Robust threshold validation"""
-        lower = self.lower_spin.value()
-        upper = self.upper_spin.value()
-        return -50 < lower < upper < 50
-
-    def _show_threshold_dialog(self, thresholds):
-        """Professional threshold selection interface"""
-        dialog = QDialog(self)
-        layout = QVBoxLayout(dialog)
-        
-        # Threshold Table
-        table = QTableWidget()
-        table.setColumnCount(3)
-        table.setHorizontalHeaderLabels(["Method", "Lower", "Upper"])
-        table.setRowCount(len(thresholds))
-        
-        # Populate suggestions
-        for row, (method, values) in enumerate(thresholds.items()):
-            table.setItem(row, 0, QTableWidgetItem(method.capitalize()))
-            table.setItem(row, 1, QTableWidgetItem(f"{values[0]:.2f}"))
-            table.setItem(row, 2, QTableWidgetItem(f"{values[1]:.2f}"))
-        
-        # Manual Input
-        manual_group = QGroupBox("Manual Thresholds")
-        manual_layout = QFormLayout(manual_group)
-        
-        lower_spin = QDoubleSpinBox()
-        lower_spin.setRange(-50, 50)
-        upper_spin = QDoubleSpinBox()
-        upper_spin.setRange(-50, 50)
-        
-        manual_layout.addRow("Lower Threshold (dB):", lower_spin)
-        manual_layout.addRow("Upper Threshold (dB):", upper_spin)
-        
-        # Buttons
-        btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        
-        def apply_thresholds():
-            # Store selected values
-            self.sar_steps['dB']['metadata']['thresholds']['user_selected'] = {
-                'lower': lower_spin.value(),
-                'upper': upper_spin.value()
-            }
-            dialog.accept()
-            
-        btn_box.accepted.connect(apply_thresholds)
-        btn_box.rejected.connect(dialog.reject)
-        
-        layout.addWidget(QLabel("Automatic Threshold Suggestions:"))
-        layout.addWidget(table)
-        layout.addWidget(manual_group)
-        layout.addWidget(btn_box)
-        
-        dialog.exec_()
 
 
     
-    def classify_water(self):
-        """Professional water classification with improved visualization"""
-        try:
-            if 'dB' not in self.sar_steps or 'thresholds' not in self.sar_steps['dB']['metadata']:
-                raise ValueError("Complete histogram analysis first")
 
-            # Store classification results properly
-            thresholds = self.sar_steps['dB']['metadata']['thresholds']
-            data = self.sar_steps['dB']['data']
-            lower = thresholds['lower']
-            upper = thresholds['upper']
-            
-            water_mask = (data >= lower) & (data <= upper)
-            water_mask = self._clean_water_mask(water_mask)
 
-            # Store results with proper structure
-            self.sar_steps['classification'] = {
-                'mask': water_mask,
-                'thresholds': thresholds,  # Store thresholds at root level
-                'stats': {
-                    'total_pixels': water_mask.size,
-                    'wet_pixels': np.sum(water_mask),
-                    'wet_percent': np.mean(water_mask) * 100
-                }
-            }
 
-            # Create results dialog
-            results_dialog = QDialog(self)
-            results_dialog.setWindowTitle("Water Classification Results")
-            results_dialog.setMinimumSize(1200, 800)
-            layout = QVBoxLayout(results_dialog)           
-            
-            
-            
-            # Create figure with subplots
-            fig = Figure(figsize=(14, 8))
-            canvas = FigureCanvas(fig)
-            toolbar = NavigationToolbar(canvas, results_dialog)
 
-            # Original Image Plot
-            ax1 = fig.add_subplot(121)
-            im1 = ax1.imshow(data, cmap='gray', vmin=lower-5, vmax=upper+5)
-            ax1.set_title("Original SAR Backscatter", fontsize=12)
-            
-            # Add properly sized colorbar
-            ax1_pos = ax1.get_position()
-            cax1 = fig.add_axes([ax1_pos.x1 + 0.02, ax1_pos.y0, 0.02, ax1_pos.height])
-            fig.colorbar(im1, cax=cax1).set_label('dB', fontsize=10)
+    
 
-            # Classification Plot
-            ax2 = fig.add_subplot(122)
-            water_display = np.where(water_mask, data, np.nan)
-            im2 = ax2.imshow(water_display, cmap='Blues', vmin=lower, vmax=upper)
-            ax2.set_title("Water Classification Results", fontsize=12)
-            
-            # Add proportional colorbar
-            ax2_pos = ax2.get_position()
-            cax2 = fig.add_axes([ax2_pos.x1 + 0.02, ax2_pos.y0, 0.02, ax2_pos.height])
-            cbar = fig.colorbar(im2, cax=cax2)
-            cbar.set_label('Water Area (dB)', fontsize=10)
-            cbar.ax.tick_params(labelsize=8)
 
-            # Statistics Panel
-            stats_text = f"""Classification Summary:
-            Total Pixels: {water_mask.size:,}
-            Water Pixels: {np.sum(water_mask):,} ({np.mean(water_mask)*100:.1f}%)
-            Non-Water Pixels: {water_mask.size - np.sum(water_mask):,}
-            
-            Threshold Values:
-            Lower: {lower:.2f} dB
-            Upper: {upper:.2f} dB
-            Method: {thresholds['method']}"""
-            
-            stats_box = QTextEdit()
-            stats_box.setMarkdown(stats_text)
-            stats_box.setReadOnly(True)
-            stats_box.setFixedHeight(150)
-
-            # Button connections with proper references
-            btn_box = QDialogButtonBox()
-            export_btn = btn_box.addButton("Export Results", QDialogButtonBox.ActionRole)
-            close_btn = btn_box.addButton("Close", QDialogButtonBox.RejectRole)
-            
-            # Proper close connection
-            close_btn.clicked.connect(results_dialog.reject)
-            export_btn.clicked.connect(lambda: self._export_classification(water_mask))
-            
-            # Layout Assembly
-            layout.addWidget(toolbar)
-            layout.addWidget(canvas)
-            layout.addWidget(stats_box)
-            layout.addWidget(btn_box)
-
-            results_dialog.exec_()
-            self.show_status("Classification results displayed")
-
-        except Exception as e:
-            self.show_error(f"Classification failed: {str(e)}")
-
-    def _export_classification(self, mask):
-        """Export classification results in multiple formats with professional visualization"""
-        try:
-            # Validate classification exists
-            if 'classification' not in self.sar_steps:
-                raise ValueError("Complete classification step first")
-
-            # Get thresholds for metadata
-            thresholds = self.sar_steps['classification']['thresholds']
-            
-            # Setup file dialog
-            formats = "PNG Image (*.png);;GeoTIFF (*.tif);;NumPy Array (*.npy)"
-            path, _ = QFileDialog.getSaveFileName(
-                self,
-                "Save Classification Results",
-                "",
-                formats
-            )
-
-            if not path:
-                return  # User cancelled
-
-            # PNG Export
-            if path.endswith('.png'):
-                self._export_png(mask, path, thresholds)
-
-            # GeoTIFF Export
-            elif path.endswith('.tif'):
-                self._save_geotiff(mask, path, thresholds)
-
-            # NumPy Export
-            elif path.endswith('.npy'):
-                np.save(path, mask)
-                self._show_message("Export Successful", 
-                                f"NumPy array saved to:\n{path}")
-
-            self.show_status(f"Results exported to {os.path.basename(path)}")
-
-        except Exception as e:
-            self.show_error(f"Export failed: {str(e)}")
-            import traceback
-            traceback.print_exc()
-
-    def _export_png(self, mask, path, thresholds):
-        """Save publication-quality PNG with geographic features if available"""
-        plt.style.use('default')
-        plt.rcParams.update({
-            'font.size': 10,
-            'axes.titlesize': 12,
-            'axes.labelsize': 10,
-            'xtick.labelsize': 8,
-            'ytick.labelsize': 8,
-            'grid.color': '#dddddd',
-            'grid.linestyle': '--',
-            'grid.alpha': 0.5,
-            'figure.dpi': 300
-        })
-
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111)
-        cmap = ListedColormap(['#1f77b4', 'white'])  # Water=blue, Non-water=white
-        geo_plot = False
-
-        try:
-            # Attempt geographic plot if cartopy available
-            from cartopy import crs as ccrs
-            profile = self.sar_steps['Original']['profile']
-            src_crs = profile['crs']
-            
-            if src_crs.is_utm:
-                zone = src_crs.utm_zone
-                if zone and zone[:-1].isdigit():
-                    zone_number = int(zone[:-1])
-                    if 1 <= zone_number <= 60:
-                        utm_crs = ccrs.UTM(zone_number)
-                        transform = profile['transform']
-                        extent = (
-                            transform[2],
-                            transform[2] + transform[0] * mask.shape[1],
-                            transform[5] + transform[4] * mask.shape[0],
-                            transform[5]
-                        )
-                        
-                        ax = plt.axes(projection=utm_crs)
-                        img = ax.imshow(
-                            mask, 
-                            cmap=cmap,
-                            extent=extent,
-                            origin='upper',
-                            transform=utm_crs
-                        )
-                        
-                        # Add gridlines
-                        gl = ax.gridlines(draw_labels=True, linewidth=0.5, alpha=0.5)
-                        gl.top_labels = gl.right_labels = False
-                        ax.set_xlabel('Easting (m)', fontsize=10)
-                        ax.set_ylabel('Northing (m)', fontsize=10)
-                        geo_plot = True
-
-        except ImportError:
-            self.show_info("Geographic features require 'cartopy' package")
-        except Exception as e:
-            print(f"Geographic plot failed: {str(e)}")
-
-        if not geo_plot:
-            # Fallback to pixel coordinates
-            img = ax.imshow(mask, cmap=cmap)
-            ax.set_xlabel('Pixel Column', fontsize=10)
-            ax.set_ylabel('Pixel Row', fontsize=10)
-            ax.grid(True)
-
-        # Add scale bar if available
-        try:
-            from matplotlib_scalebar.scalebar import ScaleBar
-            if geo_plot:
-                ax.add_artist(ScaleBar(
-                    dx=1,  # Adjust based on data resolution
-                    units="m",
-                    location="lower left",
-                    length_fraction=0.25,
-                    height_fraction=0.02
-                ))
-        except ImportError:
-            pass
-
-        # Add annotations
-        title = f"Water Classification\n({thresholds['lower']:.1f}-{thresholds['upper']:.1f} dB)"
-        ax.set_title(title, fontsize=12, pad=15)
-        plt.figtext(0.95, 0.03, 
-                f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-                ha='right', va='bottom', fontsize=8, alpha=0.7)
-
-        # Add colorbar
-        cbar = fig.colorbar(img, ax=ax, ticks=[0, 1], shrink=0.8)
-        cbar.set_ticklabels(['Water', 'Non-water'])
-        cbar.set_label('Classification Result', fontsize=10)
-
-        plt.tight_layout()
-        plt.savefig(path, bbox_inches='tight', pad_inches=0.1)
-        plt.close()
-        self._show_message("Export Successful", f"PNG saved to:\n{path}")
-
-    def _save_geotiff(self, mask, path, thresholds):
-        """Save georeferenced RGB GeoTIFF with metadata"""
-        try:
-            profile = self.sar_steps['Original']['profile'].copy()
-            
-            # Create RGB bands (water=blue, non-water=white)
-            red = np.where(mask, 0, 255).astype(np.uint8)
-            green = np.where(mask, 0, 255).astype(np.uint8)
-            blue = np.where(mask, 255, 255).astype(np.uint8)
-
-            # Update profile for RGB
-            profile.update({
-                'driver': 'GTiff',
-                'count': 3,
-                'dtype': 'uint8',
-                'compress': 'lzw',
-                'photometric': 'RGB'
-            })
-
-            with rasterio.open(path, 'w', **profile) as dst:
-                dst.write(red, 1)
-                dst.write(green, 2)
-                dst.write(blue, 3)
-                dst.update_tags(
-                    processing_date=datetime.now().isoformat(),
-                    water_threshold_lower=thresholds['lower'],
-                    water_threshold_upper=thresholds['upper'],
-                    water_color='RGB(0,0,255)',
-                    non_water_color='RGB(255,255,255)'
-                )
-
-            self._show_message("Export Successful", f"GeoTIFF saved to:\n{path}")
-
-        except Exception as e:
-            self.show_error(f"GeoTIFF export failed: {str(e)}")
-            raise
-
-    def _show_message(self, title, message):
-        """Display standardized success message"""
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Information)
-        msg.setWindowTitle(title)
-        msg.setText(message)
-        msg.setStandardButtons(QMessageBox.Ok)
-        msg.exec_()
  
 
 
  
     
-    def _clean_water_mask(self, mask):
-        """Professional post-processing"""
-        from skimage.morphology import remove_small_objects, binary_closing
-        
-        # 1. Remove small objects
-        cleaned = remove_small_objects(mask, min_size=16)
-        
-        # 2. Apply morphological closing
-        return binary_closing(cleaned, footprint=np.ones((3,3)))  
 
 
-    def _run_enhanced_auto_analysis(self):
-        """Fixed auto-analysis with proper array handling"""
-        try:
-            data = self.current_hist_data
-            
-            # 1. Calculate thresholds using multiple professional methods
-            methods = {
-                'Otsu': filters.threshold_otsu(data),
-                'Percentile (2/98)': np.percentile(data, [2, 98]),
-                'K-means': self._kmeans_threshold(data),
-                'Adaptive': self._adaptive_threshold(data),
-                'Mean ± 2σ': (
-                    np.mean(data) - 2*np.std(data),
-                    np.mean(data) + 2*np.std(data)
-                )
-            }
-
-            # 2. Validate and weight results
-            valid_ranges = [(-35, 5)]  # Typical SAR dB range for water analysis
-            weighted_results = []
-            
-            for method_name, values in methods.items():
-                # Ensure scalar values for comparison
-                if isinstance(values, (np.ndarray, list)):
-                    lower = float(values[0])
-                    upper = float(values[1]) if len(values) > 1 else lower
-                else:
-                    lower = upper = float(values)
-
-                # Validate against physical limits using scalar comparisons
-                if -50 < lower < upper < 50:
-                    # Weight professional methods higher
-                    weight = 2 if method_name in ['Otsu', 'K-means'] else 1
-                    weighted_results.extend([lower]*weight + [upper]*weight)
-
-            # 3. Calculate robust thresholds with array-safe operations
-            if weighted_results:
-                lower = np.percentile(weighted_results, 25).item()  # Convert to scalar
-                upper = np.percentile(weighted_results, 75).item()
-            else:
-                # Fallback to percentiles with explicit scalar conversion
-                lower, upper = np.percentile(data, [5, 95]).tolist()
-
-            # 4. Apply to UI with validation
-            self.range_min.setValue(float(np.clip(lower, -50, 50)))
-            self.range_max.setValue(float(np.clip(upper, -50, 50)))
-
-            # 5. Visual feedback
-            self._refresh_histogram()
-            self._show_confidence_indicator(lower, upper)
-
-        except Exception as e:
-            self.show_error(f"Enhanced analysis failed: {str(e)}")
-
-    def _show_confidence_indicator(self, lower, upper):
-        """Visual quality indicator for threshold reliability"""
-        overlap_score = self._calculate_overlap_score(lower, upper)
-        
-        # Create color-coded confidence indicator
-        confidence_color = {
-            'high': '#4CAF50',
-            'medium': '#FFC107',
-            'low': '#F44336'
-        }.get(overlap_score['confidence'], 'gray')
-
-        self.ax.text(
-            0.98, 0.95,
-            f"Confidence: {overlap_score['confidence'].upper()}",
-            transform=self.ax.transAxes,
-            color=confidence_color,
-            weight='bold',
-            bbox=dict(facecolor='white', alpha=0.8))
-        
-        self.canvas.draw()
-
-    def _calculate_overlap_score(self, lower, upper):
-        """Calculate statistical confidence in threshold range"""
-        from scipy.stats import norm
-        
-        data = self.current_hist_data
-        mean, std = np.mean(data), np.std(data)
-        
-        # Calculate probability mass within range
-        prob_lower = norm.cdf(lower, mean, std)
-        prob_upper = norm.cdf(upper, mean, std)
-        overlap = prob_upper - prob_lower
-        
-        return {
-            'confidence': 'high' if overlap > 0.7 else 'medium' if overlap > 0.4 else 'low',
-            'probability': overlap
-        }
-
-    def _show_histogram(self, data):
-        """Fixed histogram display with complete functionality"""
-        try:
-            self.hist_dialog = QDialog(self)
-            self.hist_dialog.setWindowTitle("SAR Backscatter Analysis")
-            self.hist_dialog.setMinimumSize(1200, 800)
-
-            # Main layout
-            main_layout = QVBoxLayout(self.hist_dialog)
-
-            # ======================================================================
-            # Control Panel
-            # ======================================================================
-            control_layout = QHBoxLayout()
-            
-            # Histogram Configuration
-            config_group = QGroupBox("Histogram Configuration")
-            config_layout = QFormLayout(config_group)
-            self.bin_spin = QSpinBox()
-            self.bin_spin.setRange(10, 1000)
-            self.bin_spin.setValue(200)
-            config_layout.addRow("Number of Bins:", self.bin_spin)
-
-            # Value Range
-            range_group = QGroupBox("Value Range")
-            range_layout = QFormLayout(range_group)
-            self.range_min = QDoubleSpinBox()
-            self.range_min.setRange(-50, 50)
-            self.range_min.setValue(-20)
-            self.range_max = QDoubleSpinBox()
-            self.range_max.setRange(-50, 50)
-            self.range_max.setValue(5)
-            range_layout.addRow("Minimum (dB):", self.range_min)
-            range_layout.addRow("Maximum (dB):", self.range_max)
-
-            control_layout.addWidget(config_group)
-            control_layout.addWidget(range_group)
-
-            # ======================================================================
-            # Expert Parameters
-            # ======================================================================
-            expert_group = QGroupBox("Expert Parameters")
-            expert_layout = QFormLayout(expert_group)
-            
-            # Method Weights
-            self.weights = {
-                'Otsu': QDoubleSpinBox(),
-                'K-means': QDoubleSpinBox(),
-                'Percentile': QDoubleSpinBox()
-            }
-            for name, widget in self.weights.items():
-                widget.setRange(0.1, 5.0)
-                widget.setValue(1.0)
-                widget.setSingleStep(0.1)
-                expert_layout.addRow(f"{name} Weight:", widget)
-
-            # Confidence Level
-            self.confidence_slider = QSlider(Qt.Horizontal)
-            self.confidence_slider.setRange(50, 95)
-            self.confidence_slider.setValue(75)
-            expert_layout.addRow("Confidence Level:", self.confidence_slider)
-
-            # ======================================================================
-            # Visualization Area
-            # ======================================================================
-            self.fig = Figure(figsize=(10, 6))
-            self.canvas = FigureCanvas(self.fig)
-            self.toolbar = NavigationToolbar(self.canvas, self.hist_dialog)
-
-            # ======================================================================
-            # Statistics Display
-            # ======================================================================
-            self.stats_box = QTextEdit()
-            self.stats_box.setReadOnly(True)
-            self.stats_box.setMaximumHeight(100)
-
-            # ======================================================================
-            # Button Panel
-            # ======================================================================
-            btn_box = QDialogButtonBox()
-            self.btn_auto = btn_box.addButton("Auto-Analyze", QDialogButtonBox.ActionRole)
-            self.btn_preview = btn_box.addButton("Preview", QDialogButtonBox.ActionRole)
-            self.btn_apply = btn_box.addButton("Apply", QDialogButtonBox.AcceptRole)
-            self.btn_cancel = btn_box.addButton("Cancel", QDialogButtonBox.RejectRole)
-
-            # ======================================================================
-            # Layout Assembly
-            # ======================================================================
-            main_layout.addLayout(control_layout)
-            main_layout.addWidget(expert_group)
-            main_layout.addWidget(self.toolbar)
-            main_layout.addWidget(self.canvas)
-            main_layout.addWidget(self.stats_box)
-            main_layout.addWidget(btn_box)
-
-            # ======================================================================
-            # Signal Connections
-            # ======================================================================
-            self.bin_spin.valueChanged.connect(self._safe_refresh)
-            self.range_min.valueChanged.connect(self._safe_refresh)
-            self.range_max.valueChanged.connect(self._safe_refresh)
-            self.btn_auto.clicked.connect(self._safe_auto_analyze)
-            self.btn_preview.clicked.connect(self._safe_preview)
-            self.btn_apply.clicked.connect(self._save_and_proceed)
-            self.btn_cancel.clicked.connect(self.hist_dialog.reject)
-
-            # Initialize data and display
-            self.current_hist_data = data[np.isfinite(data)]
-            self._refresh_histogram()
-            self._update_statistics()
-            self.hist_dialog.exec_()
-
-        except Exception as e:
-            self.show_error(f"Histogram initialization failed: {str(e)}")
-
-    def _safe_refresh(self):
-        """Safe histogram refresh with error handling"""
-        try:
-            self._refresh_histogram()
-            self._update_statistics()
-        except Exception as e:
-            self.show_error(f"Refresh failed: {str(e)}")
-
-    def _refresh_histogram(self):
-        """Robust histogram drawing"""
-        self.fig.clear()
-        ax = self.fig.add_subplot(111)
-        
-        try:
-            # Calculate histogram parameters
-            bins = self.bin_spin.value()
-            vmin = self.range_min.value()
-            vmax = self.range_max.value()
-            
-            # Validate parameters
-            if vmin >= vmax:
-                raise ValueError("Minimum value must be less than maximum")
-            if bins < 10:
-                raise ValueError("Minimum 10 bins required")
-
-            # Create histogram
-            n, bins, patches = ax.hist(
-                self.current_hist_data,
-                bins=bins,
-                range=(vmin, vmax),
-                density=True,
-                color='steelblue',
-                edgecolor='black'
-            )
-
-            # Add KDE curve
-            kde = gaussian_kde(self.current_hist_data)
-            x = np.linspace(vmin, vmax, 300)
-            ax.plot(x, kde(x), color='darkorange', linewidth=2)
-
-            # Add thresholds
-            ax.axvline(self.range_min.value(), color='red', linestyle='--')
-            ax.axvline(self.range_max.value(), color='green', linestyle='--')
-
-            ax.set_title("SAR Backscatter Distribution")
-            ax.set_xlabel("Backscatter Coefficient (dB)")
-            ax.set_ylabel("Normalized Frequency")
-            ax.grid(True, linestyle='--', alpha=0.5)
-            
-            self.canvas.draw()
-
-        except Exception as e:
-            self.show_error(f"Histogram error: {str(e)}")
-
-    def _update_statistics(self):
-        """Update statistics display with robust calculations"""
-        try:
-            stats = [
-                f"Data Statistics:",
-                f"• Samples: {len(self.current_hist_data):,}",
-                f"• Mean: {np.mean(self.current_hist_data):.2f} dB",
-                f"• Std Dev: {np.std(self.current_hist_data):.2f} dB",
-                f"• Min: {np.min(self.current_hist_data):.2f} dB",
-                f"• Max: {np.max(self.current_hist_data):.2f} dB",
-                f"• 5th %ile: {np.percentile(self.current_hist_data, 5):.2f} dB",
-                f"• 95th %ile: {np.percentile(self.current_hist_data, 95):.2f} dB"
-            ]
-            self.stats_box.setText('\n'.join(stats))
-        except Exception as e:
-            self.stats_box.setText(f"Statistics unavailable: {str(e)}")
-
-    def _safe_auto_analyze(self):
-        """Error-handled auto-analysis"""
-        try:
-            self._run_enhanced_auto_analyze()
-            self._update_statistics()
-        except Exception as e:
-            self.show_error(f"Auto-analysis failed: {str(e)}")
-
-    def _run_enhanced_auto_analyze(self):
-        """Fixed enhanced auto-analysis"""
-        try:
-            data = self.current_hist_data
-            
-            # Get weights from UI
-            weights = {
-                'Otsu': self.weights['Otsu'].value(),
-                'K-means': self.weights['K-means'].value(),
-                'Percentile': self.weights['Percentile'].value()
-            }
-
-            # Calculate thresholds using different methods
-            otsu_val = filters.threshold_otsu(data)
-            percentiles = np.percentile(data, [2, 98])
-            kmeans_low, kmeans_high = self._kmeans_threshold(data)
-            mean = np.mean(data)
-            std = np.std(data)
-            mean_thresh = (mean - 2*std, mean + 2*std)
-
-            # Collect all thresholds with weighting
-            weighted = []
-            weighted.extend([percentiles[0]] * int(weights['Percentile']))
-            weighted.extend([percentiles[1]] * int(weights['Percentile']))
-            weighted.extend([kmeans_low] * int(weights['K-means']))
-            weighted.extend([kmeans_high] * int(weights['K-means']))
-            weighted.extend([otsu_val] * int(weights['Otsu']))
-            weighted.extend([mean_thresh[0], mean_thresh[1]])
-
-            # Calculate final thresholds
-            lower = np.percentile(weighted, 25)
-            upper = np.percentile(weighted, 75)
-
-            # Apply to UI
-            self.range_min.setValue(float(lower))
-            self.range_max.setValue(float(upper))
-
-        except Exception as e:
-            raise ValueError(f"Auto-analysis error: {str(e)}")
-
-    def _kmeans_threshold(self, data):
-        """Robust K-means implementation"""
-        from sklearn.cluster import KMeans
-        data_reshaped = data.reshape(-1, 1)
-        kmeans = KMeans(n_clusters=2, n_init=10).fit(data_reshaped)
-        centers = sorted(kmeans.cluster_centers_.flatten())
-        return float(centers[0]), float(centers[1])
-
-    def _safe_preview(self):
-        """Fixed preview triggering"""
-        try:
-            lower = self.range_min.value()
-            upper = self.range_max.value()
-            
-            if not hasattr(self, 'sar_steps') or 'dB' not in self.sar_steps:
-                raise ValueError("Complete dB conversion first")
-                
-            self._show_classification_preview(lower, upper)
-            
-        except ValueError as ve:
-            self.show_error(f"Preview validation failed: {str(ve)}")
-        except Exception as e:
-            self.show_error(f"Unexpected preview error: {str(e)}")
-
-    def _save_and_proceed(self):
-        """Fixed save method with workflow control"""
-        try:
-            lower = self.range_min.value()
-            upper = self.range_max.value()
-            
-            if lower >= upper:
-                raise ValueError("Lower threshold must be less than upper")
-            if not (-50 < lower < upper < 50):
-                raise ValueError("Thresholds must be between -50 and 50 dB")
-                
-            # Store thresholds
-            self.sar_steps['dB']['metadata']['thresholds'] = {
-                'lower': float(lower),
-                'upper': float(upper),
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            # Enable next workflow step
-            self._enable_next_step()
-            
-            # Close dialog
-            if self.hist_dialog:
-                self.hist_dialog.accept()
-
-        except ValueError as ve:
-            self.show_error(f"Validation error: {str(ve)}")
-        except Exception as e:
-            self.show_error(f"Save failed: {str(e)}")
     
 
-    def _show_classification_preview(self, lower, upper):
-        """Fixed preview with proper imports and error handling"""
-        try:
-            # Validate inputs
-            if lower >= upper:
-                raise ValueError("Lower threshold must be less than upper")
-                
-            # Get dB-scaled data with validation
-            if 'dB' not in self.sar_steps:
-                raise ValueError("Complete dB conversion first")
-                
-            db_data = self.sar_steps['dB']['data']
-            
-            # Create initial mask
-            mask = np.logical_and(db_data >= lower, db_data <= upper)
-            
-            # Apply morphological operations with checks
-            if mask.any():
-                cleaned_mask = binary_closing(mask, footprint=np.ones((3,3)))
-                cleaned_mask = remove_small_objects(cleaned_mask, min_size=16)
-            else:
-                cleaned_mask = mask  # Handle empty mask case
-
-            # Create RGB preview
-            preview = np.zeros((*cleaned_mask.shape, 3))
-            preview[cleaned_mask] = [0, 0.4, 1]  # Water in blue
-            preview[~cleaned_mask] = [0.8, 0.8, 0.8]  # Non-water in gray
-            
-            # Create preview dialog
-            preview_dialog = QDialog(self)
-            preview_dialog.setWindowTitle("Classification Preview")
-            layout = QVBoxLayout(preview_dialog)
-            
-            # Create matplotlib figure
-            fig = Figure(figsize=(10, 6))
-            canvas = FigureCanvas(fig)
-            ax = fig.add_subplot(111)
-            ax.imshow(preview)
-            ax.set_title(f"Water Classification Preview\nThresholds: {lower:.2f} to {upper:.2f} dB")
-            ax.axis('off')
-            
-            # Add to layout
-            layout.addWidget(canvas)
-            preview_dialog.exec_()
-
-        except Exception as e:
-            self.show_error(f"Preview failed: {str(e)}\n{traceback.format_exc()}")
     
     def _enable_next_step(self, completed_step_name):
         """Unified step enabling using step names"""
@@ -14723,9 +10690,6 @@ class SatelliteImageApp(QMainWindow):
             self.show_error(f"Workflow error: {str(e)}")
 
 
-
-
-
     def show_error(self, message):
             """Standard error display method"""
             QMessageBox.critical(self, "Error", message)
@@ -14737,45 +10701,6 @@ class SatelliteImageApp(QMainWindow):
         self.statusBar().showMessage(message, timeout)
 
     
-    def convert_db(self):
-        """Convert to dB scale after terrain correction"""
-        try:
-            if 'Terrain' not in self.sar_steps:
-                raise ValueError("Complete terrain correction first")
-
-            terrain_data = self.sar_steps['Terrain']['data']
-            
-            # Convert to dB with enhanced safety checks
-            with np.errstate(divide='ignore', invalid='ignore'):
-                db_data = 10 * np.log10(np.where(terrain_data > 0, terrain_data, np.nan))
-
-            # Store dB-converted data
-            self.sar_steps['dB'] = {
-                'data': db_data,
-                'profile': self.sar_steps['Terrain']['profile'],
-                'metadata': {
-                    **self.sar_steps['Terrain']['metadata'],
-                    'conversion_date': datetime.now().isoformat()
-                }
-            }
-
-            self._enable_next_step('convert_db')
-            self.layer_list.addItem(QListWidgetItem("📈 dB Converted"))
-            self.statusBar().showMessage("dB conversion completed", 5000)
-
-        except Exception as e:
-            self.show_error(f"dB conversion failed: {str(e)}")
-
-    def _reset_workflow_step(self, step_name):
-        """Reset specific workflow step"""
-        try:
-            step_idx = self.workflow_steps.index(step_name)
-            # Re-enable current step and disable subsequent steps
-            for i in range(len(self.workflow_actions)):
-                self.workflow_actions[i].setEnabled(i <= step_idx)
-            self.show_status(f"Ready to retry: {step_name.replace('_', ' ')}")
-        except ValueError:
-            self.show_error("Invalid workflow step reset")
     
     
     def _reset_workflow(self):
@@ -14786,262 +10711,9 @@ class SatelliteImageApp(QMainWindow):
         self.current_step = 0
 
 
-
-    def _show_preview(self):
-        """Fixed preview with proper control access"""
-        try:
-            # Use the correct spin box names
-            lower = self.lower_spin.value()
-            upper = self.upper_spin.value()
-            
-            # Validate thresholds
-            if lower >= upper:
-                raise ValueError("Lower threshold must be less than upper")
-                
-            # Get dB-scaled data
-            db_data = self.sar_steps['dB']['data']
-            
-            # Create and display preview
-            mask = np.logical_and(db_data >= lower, db_data <= upper)
-            cleaned_mask = binary_closing(mask, footprint=np.ones((3,3)))
-            cleaned_mask = remove_small_objects(cleaned_mask, min_size=16)
-            
-            preview = np.zeros((*cleaned_mask.shape, 3))
-            preview[cleaned_mask] = [0, 0.4, 1]  # Water
-            preview[~cleaned_mask] = [0.8, 0.8, 0.8]  # Non-water
-            
-            self._display_preview_image(preview, lower, upper)
-
-        except Exception as e:
-            self.show_error(f"Preview failed: {str(e)}")
-
-    def _display_preview_image(self, preview, lower, upper):
-        """Display preview in a dialog window"""
-        preview_dialog = QDialog(self)
-        preview_dialog.setWindowTitle("Classification Preview")
-        layout = QVBoxLayout(preview_dialog)
-        
-        fig = Figure(figsize=(10, 6))
-        canvas = FigureCanvas(fig)
-        ax = fig.add_subplot(111)
-        ax.imshow(preview)
-        ax.set_title(f"Water Classification Preview\nThresholds: {lower:.2f} to {upper:.2f} dB")
-        ax.axis('off')
-        
-        layout.addWidget(canvas)
-        preview_dialog.exec_()
-
-
         
 #############################################
-class DbConversionWorker(QThread):
-        progress = pyqtSignal(int)
-        finished = pyqtSignal(np.ndarray)
-        error = pyqtSignal(str)
 
-        def __init__(self, linear_data):
-            super().__init__()
-            self.linear_data = linear_data
-
-        def run(self):
-            try:
-                self.progress.emit(10)
-                
-                # تجنب القيم الصفرية والسالبة
-                valid_data = np.where(self.linear_data > 0, self.linear_data, np.nan)
-                
-                self.progress.emit(30)
-                
-                # التحويل إلى dB
-                db_data = 10 * np.log10(valid_data)
-                
-                self.progress.emit(90)
-                
-                # تنظيف البيانات
-                db_data = np.where(np.isfinite(db_data), db_data, np.nan)
-                
-                self.progress.emit(100)
-                self.finished.emit(db_data)
-                
-            except Exception as e:
-                self.error.emit(f"خطأ في التحويل: {str(e)}")
-
-class ClassDefinitionDialog(QDialog):
-    """Dialog for defining land use classes with color picker."""
-    def __init__(self, parent, default_classes):
-        super().__init__(parent)
-        self.setWindowTitle("Define Land Use Classes")
-        self.setMinimumSize(600, 400)
-        
-        self.classes = {}
-        self.setup_ui(default_classes)
     
-    def setup_ui(self, default_classes):
-        layout = QVBoxLayout(self)
-        
-        # Table for class definitions
-        self.table = QTableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["Class Name", "Color", "Value"])
-        self.table.setRowCount(len(default_classes))
-        
-        # Add default classes
-        for row, (name, props) in enumerate(default_classes.items()):
-            self.add_class_row(row, name, props['color'], props['value'])
-        
-        # Buttons
-        btn_layout = QHBoxLayout()
-        add_btn = QPushButton("Add Class")
-        remove_btn = QPushButton("Remove Selected")
-        done_btn = QPushButton("Done")
-        
-        add_btn.clicked.connect(self.add_class)
-        remove_btn.clicked.connect(self.remove_class)
-        done_btn.clicked.connect(self.accept)
-        
-        btn_layout.addWidget(add_btn)
-        btn_layout.addWidget(remove_btn)
-        btn_layout.addStretch()
-        btn_layout.addWidget(done_btn)
-        
-        layout.addWidget(self.table)
-        layout.addLayout(btn_layout)
-    
-    def add_class_row(self, row, name, color, value):
-        """Add a class definition row to the table."""
-        # Class name
-        name_item = QTableWidgetItem(name)
-        self.table.setItem(row, 0, name_item)
-        
-        # Color picker
-        color_btn = QPushButton()
-        color_btn.setStyleSheet(f"background-color: {color};")
-        color_btn.clicked.connect(lambda: self.pick_color(color_btn))
-        self.table.setCellWidget(row, 1, color_btn)
-        
-        # Value
-        spin = QSpinBox()
-        spin.setRange(1, 255)
-        spin.setValue(value)
-        self.table.setCellWidget(row, 2, spin)
-    
-    def add_class(self):
-        """Add a new empty class row."""
-        row = self.table.rowCount()
-        self.table.insertRow(row)
-        self.add_class_row(row, f"Class{row+1}", "#FFFFFF", row+1)
-    
-    def remove_class(self):
-        """Remove selected class."""
-        row = self.table.currentRow()
-        if row >= 0:
-            self.table.removeRow(row)
-    
-    def pick_color(self, button):
-        """Open color picker for the button."""
-        color = QColorDialog.getColor(QColor(button.styleSheet().split(":")[1].strip(";")))
-        if color.isValid():
-            button.setStyleSheet(f"background-color: {color.name()};")
-    
-    def get_classes(self):
-        """Get the defined classes as a dictionary."""
-        classes = {}
-        for row in range(self.table.rowCount()):
-            name = self.table.item(row, 0).text()
-            color = self.table.cellWidget(row, 1).styleSheet().split(":")[1].strip(";")
-            value = self.table.cellWidget(row, 2).value()
-            classes[name] = {"color": color, "value": value}
-        return classes
-    
-    def show_attribute_table(self):
-        """Wrapper function to show attribute table"""
-        try:
-            # Get selected layer
-            selected_items = self.layer_list.selectedItems()
-            if not selected_items:
-                QMessageBox.warning(self, "Warning", "Please select a layer first!")
-                return
-                
-            layer_name = selected_items[0].text()
-            
-            # Call the processor's method
-            self.polygon_processor.show_attribute_table(layer_name)
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to show attribute table: {str(e)}")
 
-class FilterWorker(QThread):
-    progress = pyqtSignal(int)
-    finished = pyqtSignal(np.ndarray)
-    error = pyqtSignal(str)
-
-    def __init__(self, data, filter_type, window_size, whitebox_path):
-        super().__init__()
-        self.data = data
-        self.filter_type = filter_type
-        self.window_size = window_size
-        self.whitebox_path = whitebox_path
-        self._is_running = True
-        self._mutex = QMutex()
-
-    def run(self):
-        try:
-            with QMutexLocker(self._mutex):
-                if not self._is_running:
-                    return
-
-            self.progress.emit(5)
-            
-            # Initialize WhiteboxTools
-            wbt = WhiteboxTools()
-            wbt.set_whitebox_dir(self.whitebox_path)
-            
-            with tempfile.TemporaryDirectory() as tmpdir:
-                # Prepare paths
-                input_path = os.path.join(tmpdir, 'input.tif')
-                output_path = os.path.join(tmpdir, 'output.tif')
-                
-                # Save input data
-                with rasterio.open(input_path, 'w',
-                                 driver='GTiff',
-                                 height=self.data.shape[0],
-                                 width=self.data.shape[1],
-                                 count=1,
-                                 dtype=self.data.dtype) as dst:
-                    dst.write(self.data, 1)
-                
-                with QMutexLocker(self._mutex):
-                    if not self._is_running:
-                        return
-                
-                self.progress.emit(30)
-                
-                # Apply selected filter
-                if self.filter_type == "Lee":
-                    wbt.lee_sigma_filter(input_path, output_path, self.window_size)
-                elif self.filter_type == "Gamma MAP":
-                    wbt.gamma_map_filter(input_path, output_path, self.window_size)
-                elif self.filter_type == "Frost":
-                    wbt.frost_filter(input_path, output_path, self.window_size)
-                
-                with QMutexLocker(self._mutex):
-                    if not self._is_running:
-                        return
-                
-                self.progress.emit(70)
-                
-                # Read output data
-                with rasterio.open(output_path) as src:
-                    result = src.read(1)
-                
-                self.progress.emit(100)
-                self.finished.emit(result)
-
-        except Exception as e:
-            self.error.emit(f"Filter error: {str(e)}")
-
-    def stop(self):
-        with QMutexLocker(self._mutex):
-            self._is_running = False
-        self.terminate()
     

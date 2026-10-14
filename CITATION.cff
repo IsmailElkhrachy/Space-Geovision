@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Space GeoVision"
+version: "1.8.3"
+license: MIT
+repository-code: "https://github.com/IsmailElkhrachy/Space-Geovision"
+authors:
+  - family-names: Elkhrachy
+    given-names: Ismail
+    affiliation: "Department of Civil Engineering, College of Engineering, Najran University, Saudi Arabia"
+    email: iaelkhrachy@nu.edu.sa
+abstract: "Desktop application (PyQt5) that couples ESA SNAP Sentinel-1 preprocessing with accuracy-assessed classification, change detection and vector tools."
+keywords: [remote sensing, Sentinel-1, Sentinel-2, flood mapping, accuracy assessment, change detection]

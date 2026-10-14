@@ -1,0 +1,9 @@
+{
+  "title": "Space GeoVision: desktop application coupling ESA SNAP Sentinel-1 preprocessing with accuracy-assessed classification, change detection and vector tools",
+  "upload_type": "software",
+  "creators": [{"name": "Elkhrachy, Ismail", "affiliation": "Najran University, Saudi Arabia"}],
+  "license": "MIT",
+  "access_right": "open",
+  "keywords": ["remote sensing", "Sentinel-1", "Sentinel-2", "flood mapping", "accuracy assessment", "change detection"],
+  "related_identifiers": [{"relation": "isSupplementTo", "identifier": "https://github.com/IsmailElkhrachy/Space-Geovision", "scheme": "url"}]
+}
