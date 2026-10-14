@@ -1,0 +1,206 @@
+/* styles.qss - ArcGIS-like Theme */
+
+/*********************** Global Settings ***********************/
+QWidget {
+    font-family: "Segoe UI", Arial;
+    font-size: 10pt;
+    color: #323232;
+    background-color: #f8f8f8;
+}
+
+/*********************** Main Menu Bar ***********************/
+QMenuBar {
+    background-color: #e0e0e0;
+    padding: 4px;
+    border-bottom: 1px solid #d0d0d0;
+}
+
+QMenuBar::item {
+    padding: 6px 18px;
+    margin: 0 2px;
+    border-radius: 3px;
+    color: #404040;
+}
+
+QMenuBar::item:selected {
+    background-color: #d0d0d0;
+}
+
+/*********************** Dropdown Menus ***********************/
+QMenu {
+    background-color: #f0f0f0;
+    border: 1px solid #b0b0b0;
+    padding: 4px;
+    margin: 1px;
+    border-radius: 3px;
+}
+
+QMenu::item {
+    padding: 6px 32px 6px 24px;
+    margin: 2px 0;
+    min-height: 26px;
+    color: #404040;
+}
+
+QMenu::item:selected {
+    background-color: #0078d4;
+    color: #ffffff;
+}
+
+QMenu::separator {
+    height: 1px;
+    background: #c0c0c0;
+    margin: 4px 0;
+}
+
+/*********************** Buttons ***********************/
+QPushButton {
+    background-color: #ffffff;
+    border: 1px solid #b0b0b0;
+    border-radius: 4px;
+    padding: 6px 12px;
+    min-width: 90px;
+    margin: 2px;
+}
+
+QPushButton:hover {
+    background-color: #f0f0f0;
+}
+
+QPushButton:pressed {
+    background-color: #e0e0e0;
+}
+
+QPushButton:disabled {
+    background-color: #f0f0f0;
+    color: #a0a0a0;
+}
+
+/*********************** Toolbars ***********************/
+QToolBar {
+    background-color: #e8e8e8;
+    padding: 4px;
+    spacing: 6px;
+    border-bottom: 1px solid #d0d0d0;
+}
+
+QToolButton {
+    padding: 5px;
+    margin: 2px;
+    border-radius: 3px;
+    background-color: #f8f8f8;
+    border: 1px solid #d0d0d0;
+}
+
+/*********************** Input Fields ***********************/
+QLineEdit, QTextEdit {
+    background-color: #ffffff;
+    border: 1px solid #b0b0b0;
+    border-radius: 3px;
+    padding: 5px;
+    margin: 2px;
+}
+
+QLineEdit:focus {
+    border-color: #0078d4;
+}
+
+/*********************** Combo Boxes ***********************/
+QComboBox {
+    background-color: #ffffff;
+    border: 1px solid #b0b0b0;
+    border-radius: 3px;
+    padding: 5px;
+    min-width: 110px;
+}
+
+QComboBox::drop-down {
+    width: 22px;
+    border-left: 1px solid #d0d0d0;
+}
+
+/*********************** Lists & Tables ***********************/
+QListWidget, QTableView {
+    background-color: #ffffff;
+    border: 1px solid #b0b0b0;
+    border-radius: 3px;
+    padding: 2px;
+}
+
+QListWidget::item {
+    padding: 6px;
+    margin: 1px 0;
+}
+
+QListWidget::item:selected {
+    background-color: #0078d4;
+    color: #ffffff;
+}
+
+/*********************** Tabs ***********************/
+QTabWidget::pane {
+    border: 1px solid #b0b0b0;
+    border-radius: 3px;
+}
+
+QTabBar::tab {
+    background-color: #e8e8e8;
+    border: 1px solid #b0b0b0;
+    padding: 8px 16px;
+    margin: 0 1px;
+    color: #606060;
+}
+
+QTabBar::tab:selected {
+    background-color: #ffffff;
+    color: #0078d4;
+}
+
+/*********************** Progress Bars ***********************/
+QProgressBar {
+    border: 1px solid #b0b0b0;
+    border-radius: 3px;
+    text-align: center;
+}
+
+QProgressBar::chunk {
+    background-color: #0078d4;
+    border-radius: 2px;
+}
+
+/*********************** Dialogs & Messages ***********************/
+QDialog {
+    background-color: #f0f0f0;
+}
+
+QMessageBox {
+    background-color: #ffffff;
+    border: 2px solid #0078d4;
+    border-radius: 4px;
+}
+
+QMessageBox QLabel {
+    color: #404040;
+    font-size: 10.5pt;
+}
+
+QMessageBox QPushButton {
+    min-width: 80px;
+    padding: 6px 10px;
+}
+
+/*********************** Special Elements ***********************/
+QScrollBar:vertical {
+    width: 12px;
+    background: #f0f0f0;
+}
+
+QScrollBar::handle:vertical {
+    background: #d0d0d0;
+    border-radius: 6px;
+}
+
+QCheckBox::indicator:checked, QRadioButton::indicator:checked {
+    background-color: #0078d4;
+    border: 1px solid #005a9e;
+}
